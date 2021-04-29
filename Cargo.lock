@@ -1005,6 +1005,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "icu_segmenter"
+version = "0.0.1"
+
+[[package]]
 name = "icu_segmenter_lstm"
 version = "0.1.0"
 dependencies = [

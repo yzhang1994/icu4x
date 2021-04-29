@@ -30,6 +30,22 @@ members = [
     "utils/pattern",
     "utils/writeable",
     "utils/zerovec",
+    "squatting/calendar",
+    "squatting/collator",
+    "squatting/display",
+    "squatting/displaynames",
+    "squatting/duration",
+    "squatting/idna",
+    "squatting/list",
+    "squatting/measure",
+    "squatting/message",
+    "squatting/names",
+    "squatting/normalizer",
+    "squatting/rbnf",
+    "squatting/segmenter",
+    "squatting/timezone",
+    "squatting/translit",
+    "squatting/unit",
 ]
 
 # Enable lto for WASM.
