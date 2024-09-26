@@ -31,7 +31,7 @@ impl DataMarker for BufferMarker {
 /// use icu_provider::hello_world::*;
 /// use icu_provider::prelude::*;
 ///
-/// let buffer_provider = HelloWorldProvider::new_with_placeholder_data().into_json_provider();
+/// let buffer_provider = HelloWorldProvider.into_json_provider();
 ///
 /// let data_provider = buffer_provider.as_deserializing();
 ///
@@ -67,7 +67,7 @@ pub enum BufferFormat {
     /// Serialize using Bincode version 1.
     Bincode1,
     /// Serialize using Postcard version 0.7.
-    Postcard07,
+    Postcard1,
 }
 
 impl BufferFormat {
@@ -81,7 +81,7 @@ impl BufferFormat {
             BufferFormat::Bincode1 => Ok(()),
 
             #[cfg(feature = "deserialize_postcard_07")]
-            BufferFormat::Postcard07 => Ok(()),
+            BufferFormat::Postcard1 => Ok(()),
 
             // Allowed for cases in which all features are enabled
             #[allow(unreachable_patterns)]

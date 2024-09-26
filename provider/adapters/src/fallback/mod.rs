@@ -1,0 +1,310 @@
+// This file is part of ICU4X. For terms of use, please see the file
+// called LICENSE at the top level of the ICU4X source tree
+// (online at: https://github.com/unicode-org/icu4x/blob/main/LICENSE ).
+
+//! Tools for locale fallback, enabling arbitrary input locales to be mapped into the nearest
+//! locale with data.
+//!
+//! # Examples
+//!
+//! Run the locale fallback algorithm:
+//!
+//! ```
+//! use icu_provider_adapters::fallback::LocaleFallbacker;
+//!
+//! // Set up a LocaleFallbacker with data.
+//! let provider = icu_testdata::get_provider();
+//! let fallbacker = LocaleFallbacker::try_new(&provider).expect("data");
+//!
+//! // Create a LocaleFallbackerWithConfig with a configuration for a specific key.
+//! // By default, uses language priority with no additional extension keywords.
+//! let key_fallbacker = fallbacker.for_config(Default::default());
+//!
+//! // Set up the fallback iterator.
+//! let loc: icu_provider::ResourceOptions = icu_locid::locale!("hi-Latn-IN").into();
+//! let mut fallback_iterator = key_fallbacker.fallback_for(loc);
+//!
+//! // Run the algorithm and check the results.
+//! assert_eq!(fallback_iterator.get().to_string(), "hi-Latn-IN");
+//! fallback_iterator.step();
+//! assert_eq!(fallback_iterator.get().to_string(), "hi-Latn");
+//! fallback_iterator.step();
+//! assert_eq!(fallback_iterator.get().to_string(), "en-IN");
+//! fallback_iterator.step();
+//! assert_eq!(fallback_iterator.get().to_string(), "en-001");
+//! fallback_iterator.step();
+//! assert_eq!(fallback_iterator.get().to_string(), "en");
+//! fallback_iterator.step();
+//! assert_eq!(fallback_iterator.get().to_string(), "und");
+//! ```
+
+use icu_locid::extensions::unicode::{Key, Value};
+use icu_locid::subtags::Variants;
+use icu_provider::prelude::*;
+use icu_provider::{FallbackPriority, ResourceKeyMetadata};
+
+mod adapter;
+mod algorithms;
+pub mod provider;
+
+pub use adapter::LocaleFallbackProvider;
+
+use provider::*;
+
+/// Configuration settings for a particular fallback operation.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub struct LocaleFallbackConfig {
+    /// Strategy for choosing which subtags to drop during locale fallback.
+    ///
+    /// # Examples
+    ///
+    /// Retain the language and script subtags until the final step:
+    ///
+    /// ```
+    /// use icu_provider_adapters::fallback::LocaleFallbacker;
+    /// use icu_provider_adapters::fallback::LocaleFallbackConfig;
+    /// use icu_provider::FallbackPriority;
+    /// use icu_provider::ResourceOptions;
+    ///
+    /// // Set up the fallback iterator.
+    /// let loc: ResourceOptions = icu_locid::Locale::from_bytes(b"ca-ES-valencia").unwrap().into();
+    /// let provider = icu_testdata::get_provider();
+    /// let fallbacker = LocaleFallbacker::try_new(&provider).expect("data");
+    /// let mut config = LocaleFallbackConfig::default();
+    /// config.priority = FallbackPriority::Language;
+    /// let key_fallbacker = fallbacker.for_config(config);
+    /// let mut fallback_iterator = key_fallbacker.fallback_for(loc);
+    ///
+    /// // Run the algorithm and check the results.
+    /// assert_eq!(fallback_iterator.get().to_string(), "ca-ES-valencia");
+    /// fallback_iterator.step();
+    /// assert_eq!(fallback_iterator.get().to_string(), "ca-ES");
+    /// fallback_iterator.step();
+    /// assert_eq!(fallback_iterator.get().to_string(), "ca");
+    /// fallback_iterator.step();
+    /// assert_eq!(fallback_iterator.get().to_string(), "und");
+    /// ```
+    ///
+    /// Retain the region subtag until the final step:
+    ///
+    /// ```
+    /// use icu_provider_adapters::fallback::LocaleFallbacker;
+    /// use icu_provider_adapters::fallback::LocaleFallbackConfig;
+    /// use icu_provider::FallbackPriority;
+    /// use icu_provider::ResourceOptions;
+    ///
+    /// // Set up the fallback iterator.
+    /// let loc: ResourceOptions = icu_locid::Locale::from_bytes(b"ca-ES-valencia").unwrap().into();
+    /// let provider = icu_testdata::get_provider();
+    /// let fallbacker = LocaleFallbacker::try_new(&provider).expect("data");
+    /// let mut config = LocaleFallbackConfig::default();
+    /// config.priority = FallbackPriority::Region;
+    /// let key_fallbacker = fallbacker.for_config(config);
+    /// let mut fallback_iterator = key_fallbacker.fallback_for(loc);
+    ///
+    /// // Run the algorithm and check the results.
+    /// assert_eq!(fallback_iterator.get().to_string(), "ca-ES-valencia");
+    /// fallback_iterator.step();
+    /// assert_eq!(fallback_iterator.get().to_string(), "ca-ES");
+    /// fallback_iterator.step();
+    /// assert_eq!(fallback_iterator.get().to_string(), "und-ES-valencia");
+    /// fallback_iterator.step();
+    /// assert_eq!(fallback_iterator.get().to_string(), "und-ES");
+    /// fallback_iterator.step();
+    /// assert_eq!(fallback_iterator.get().to_string(), "und");
+    /// ```
+    pub priority: FallbackPriority,
+    /// An extension keyword to retain during locale fallback.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use icu_provider_adapters::fallback::LocaleFallbacker;
+    /// use icu_provider_adapters::fallback::LocaleFallbackConfig;
+    /// use icu_provider::ResourceOptions;
+    ///
+    /// // Set up the fallback iterator.
+    /// let loc: ResourceOptions = icu_locid::Locale::from_bytes(b"ar-EG-u-nu-latn").unwrap().into();
+    /// let provider = icu_testdata::get_provider();
+    /// let fallbacker = LocaleFallbacker::try_new(&provider).expect("data");
+    /// let mut config = LocaleFallbackConfig::default();
+    /// config.extension_key = Some(icu_locid::extensions_unicode_key!("nu"));
+    /// let key_fallbacker = fallbacker.for_config(config);
+    /// let mut fallback_iterator = key_fallbacker.fallback_for(loc);
+    ///
+    /// // Run the algorithm and check the results.
+    /// assert_eq!(fallback_iterator.get().to_string(), "ar-EG-u-nu-latn");
+    /// fallback_iterator.step();
+    /// assert_eq!(fallback_iterator.get().to_string(), "ar-EG");
+    /// fallback_iterator.step();
+    /// assert_eq!(fallback_iterator.get().to_string(), "ar");
+    /// fallback_iterator.step();
+    /// assert_eq!(fallback_iterator.get().to_string(), "und");
+    /// ```
+    pub extension_key: Option<Key>,
+}
+
+impl From<ResourceKeyMetadata> for LocaleFallbackConfig {
+    fn from(key_metadata: ResourceKeyMetadata) -> Self {
+        LocaleFallbackConfig {
+            priority: key_metadata.fallback_priority,
+            extension_key: key_metadata.extension_key,
+        }
+    }
+}
+
+/// Entry type for locale fallbacking.
+///
+/// See the module-level documentation for an example.
+pub struct LocaleFallbacker {
+    likely_subtags: DataPayload<LocaleFallbackLikelySubtagsV1Marker>,
+    parents: DataPayload<LocaleFallbackParentsV1Marker>,
+}
+
+/// Intermediate type for spawning locale fallback iterators based on a specific configuration.
+///
+/// See the module-level documentation for an example.
+pub struct LocaleFallbackerWithConfig<'a> {
+    likely_subtags: &'a LocaleFallbackLikelySubtagsV1<'a>,
+    parents: &'a LocaleFallbackParentsV1<'a>,
+    config: LocaleFallbackConfig,
+}
+
+/// Inner iteration type. Does not own the item under fallback.
+struct LocaleFallbackIteratorInner<'a, 'b> {
+    likely_subtags: &'a LocaleFallbackLikelySubtagsV1<'a>,
+    parents: &'a LocaleFallbackParentsV1<'a>,
+    config: &'b LocaleFallbackConfig,
+    backup_extension: Option<Value>,
+    backup_subdivision: Option<Value>,
+    backup_variants: Option<Variants>,
+}
+
+/// Iteration type for locale fallback operations.
+///
+/// Because the `Iterator` trait does not allow items to borrow from the iterator, this class does
+/// not implement that trait. Instead, use `.step()` and `.get()`.
+pub struct LocaleFallbackIterator<'a, 'b, T> {
+    current: T,
+    inner: LocaleFallbackIteratorInner<'a, 'b>,
+}
+
+impl LocaleFallbacker {
+    /// Creates a [`LocaleFallbacker`] with fallback data (likely subtags and parent locales).
+    pub fn try_new<P>(provider: &P) -> Result<Self, DataError>
+    where
+        P: ResourceProvider<LocaleFallbackLikelySubtagsV1Marker>
+            + ResourceProvider<LocaleFallbackParentsV1Marker>
+            + ?Sized,
+    {
+        let likely_subtags = provider
+            .load_resource(&Default::default())?
+            .take_payload()?;
+        let parents = provider
+            .load_resource(&Default::default())?
+            .take_payload()?;
+        Ok(LocaleFallbacker {
+            likely_subtags,
+            parents,
+        })
+    }
+
+    /// Creates a [`LocaleFallbacker`] without fallback data. Using this constructor may result in
+    /// surprising behavior, especially in multi-script languages.
+    pub fn new_without_data() -> Self {
+        LocaleFallbacker {
+            likely_subtags: DataPayload::from_owned(Default::default()),
+            parents: DataPayload::from_owned(Default::default()),
+        }
+    }
+
+    /// Creates the intermediate [`LocaleFallbackerWithConfig`] with configuration options.
+    pub fn for_config(&self, config: LocaleFallbackConfig) -> LocaleFallbackerWithConfig {
+        LocaleFallbackerWithConfig {
+            likely_subtags: self.likely_subtags.get(),
+            parents: self.parents.get(),
+            config,
+        }
+    }
+
+    /// Creates the intermediate [`LocaleFallbackerWithConfig`] based on a [`ResourceKey`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use icu_provider_adapters::fallback::LocaleFallbacker;
+    /// use icu_provider::prelude::*;
+    /// use std::borrow::Cow;
+    ///
+    /// // Define the data struct with key.
+    /// #[icu_provider::data_struct(
+    ///     marker(FooV1Marker, "demo/foo@1", fallback_by = "region")
+    /// )]
+    /// pub struct FooV1<'data> {
+    ///     message: Cow<'data, str>,
+    /// };
+    ///
+    /// // Set up the fallback iterator.
+    /// let loc: ResourceOptions = icu_locid::Locale::from_bytes(b"en-GB").unwrap().into();
+    /// let provider = icu_testdata::get_provider();
+    /// let fallbacker = LocaleFallbacker::try_new(&provider).expect("data");
+    /// let key_fallbacker = fallbacker.for_key(FooV1Marker::KEY);
+    /// let mut fallback_iterator = key_fallbacker.fallback_for(loc);
+    ///
+    /// // Run the algorithm and check the results.
+    /// assert_eq!(fallback_iterator.get().to_string(), "en-GB");
+    /// fallback_iterator.step();
+    /// assert_eq!(fallback_iterator.get().to_string(), "und-GB");
+    /// fallback_iterator.step();
+    /// assert_eq!(fallback_iterator.get().to_string(), "und");
+    /// ```
+    pub fn for_key(&self, resource_key: ResourceKey) -> LocaleFallbackerWithConfig {
+        self.for_config(resource_key.get_metadata().into())
+    }
+}
+
+impl<'a> LocaleFallbackerWithConfig<'a> {
+    /// Creates an iterator based on a [`ResourceOptions`] (which can be created from [`Locale`]).
+    ///
+    /// When first initialized, the locale is normalized according to the fallback algorithm.
+    ///
+    /// [`Locale`]: icu_locid::Locale
+    pub fn fallback_for<'b, T>(&'b self, mut ro: T) -> LocaleFallbackIterator<'a, 'b, T>
+    where
+        T: AsMut<ResourceOptions>,
+    {
+        self.normalize(ro.as_mut());
+        LocaleFallbackIterator {
+            current: ro,
+            inner: LocaleFallbackIteratorInner {
+                likely_subtags: self.likely_subtags,
+                parents: self.parents,
+                config: &self.config,
+                backup_extension: None,
+                backup_subdivision: None,
+                backup_variants: None,
+            },
+        }
+    }
+}
+
+impl<'a, 'b, T> LocaleFallbackIterator<'a, 'b, T> {
+    /// Gets the current [`ResourceOptions`] under fallback.
+    pub fn get(&self) -> &T {
+        &self.current
+    }
+}
+
+impl<'a, 'b, T> LocaleFallbackIterator<'a, 'b, T>
+where
+    T: AsMut<ResourceOptions>,
+{
+    /// Performs one step of the locale fallback algorithm.
+    ///
+    /// The fallback is completed once the inner [`ResourceOptions`] becomes `und`.
+    pub fn step(&mut self) -> &mut Self {
+        self.inner.step(self.current.as_mut());
+        self
+    }
+}

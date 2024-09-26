@@ -59,6 +59,7 @@ pub fn make_ule_impl(attr: AttributeArgs, mut input: DeriveInput) -> TokenStream
         quote!(
             impl<'a> zerovec::maps::ZeroMapKV<'a> for #name {
                 type Container = zerovec::ZeroVec<'a, #name>;
+                type Slice = zerovec::ZeroSlice<#name>;
                 type GetType = #ule_name;
                 type OwnedType = #name;
             }
@@ -268,12 +269,14 @@ fn make_ule_struct_impl(
     let repr_attr = utils::repr_for(&struc.fields);
     let vis = &input.vis;
 
-    let doc = format!("[`ULE`](zerovec::ule::ULE) type for {name}");
+    let doc = format!("[`ULE`](zerovec::ule::ULE) type for [`{name}`]");
 
     let ule_struct: DeriveInput = parse_quote!(
         #[repr(#repr_attr)]
         #[derive(Copy, Clone, PartialEq, Eq)]
         #[doc = #doc]
+        // We suppress the `missing_docs` lint for the fields of the struct.
+        #[allow(missing_docs)]
         #vis struct #ule_name #field_inits #semi
     );
     let derived = crate::ule::derive_impl(&ule_struct);

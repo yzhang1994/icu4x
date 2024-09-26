@@ -38,6 +38,11 @@ impl<T> ZeroSlice<T>
 where
     T: AsULE,
 {
+    /// Returns an empty slice.
+    pub const fn new_empty() -> &'static Self {
+        Self::from_ule_slice(&[])
+    }
+
     /// Get this [`ZeroSlice`] as a borrowed [`ZeroVec`]
     ///
     /// [`ZeroSlice`] does not have most of the methods that [`ZeroVec`] does,
@@ -51,6 +56,18 @@ where
     /// if it's not a valid byte sequence
     pub fn parse_byte_slice(bytes: &[u8]) -> Result<&Self, ZeroVecError> {
         T::ULE::parse_byte_slice(bytes).map(Self::from_ule_slice)
+    }
+
+    /// Uses a `&[u8]` buffer as a `ZeroVec<T>` without any verification.
+    ///
+    /// # Safety
+    ///
+    /// `bytes` need to be an output from [`ZeroSlice::as_bytes()`].
+    pub const unsafe fn from_bytes_unchecked(bytes: &[u8]) -> &Self {
+        // &[u8] and &[T::ULE] are the same slice with different length metadata.
+        let (data, mut metadata): (usize, usize) = core::mem::transmute(bytes);
+        metadata /= core::mem::size_of::<T::ULE>();
+        core::mem::transmute((data, metadata))
     }
 
     /// Construct a `&ZeroSlice<T>` from a slice of ULEs.
@@ -251,10 +268,10 @@ where
     ///     }
     /// };
     ///
-    /// let zs_char: &ZeroSlice<char> = zs_u32.try_as_converted().expect("valid code points");
+    /// let zs_u8_4: &ZeroSlice<[u8; 4]> = zs_u32.try_as_converted().expect("valid code points");
     ///
-    /// assert_eq!(zs_u32.get(0), Some(u32::from('🍿')));
-    /// assert_eq!(zs_char.get(0), Some('🍿'));
+    /// assert_eq!(zs_u32.get(0), Some(127871));
+    /// assert_eq!(zs_u8_4.get(0), Some([0x7F, 0xF3, 0x01, 0x00]));
     /// ```
     #[inline]
     pub fn try_as_converted<P: AsULE>(&self) -> Result<&ZeroSlice<P>, ZeroVecError> {

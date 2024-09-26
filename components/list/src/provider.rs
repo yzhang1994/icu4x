@@ -26,8 +26,8 @@ pub use crate::string_matcher::StringMatcher;
 #[derive(Clone, Debug)]
 #[cfg_attr(
     feature = "datagen",
-    derive(serde::Serialize, crabbake::Bakeable),
-    crabbake(path = icu_list::provider),
+    derive(serde::Serialize, databake::Bake),
+    databake(path = icu_list::provider),
 )]
 pub struct ListFormatterPatternsV1<'data>(
     #[cfg_attr(feature = "datagen", serde(with = "deduplicating_array"))]
@@ -98,8 +98,8 @@ impl<'data> ListFormatterPatternsV1<'data> {
 #[derive(Clone, Debug, PartialEq, yoke::Yokeable, zerofrom::ZeroFrom)]
 #[cfg_attr(
     feature = "datagen",
-    derive(serde::Serialize, crabbake::Bakeable),
-    crabbake(path = icu_list::provider),
+    derive(serde::Serialize, databake::Bake),
+    databake(path = icu_list::provider),
 )]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 pub struct ConditionalListJoinerPattern<'data> {
@@ -115,8 +115,8 @@ pub struct ConditionalListJoinerPattern<'data> {
 #[derive(Clone, Debug, PartialEq, yoke::Yokeable, zerofrom::ZeroFrom)]
 #[cfg_attr(
     feature = "datagen",
-    derive(serde::Serialize, crabbake::Bakeable),
-    crabbake(path = icu_list::provider),
+    derive(serde::Serialize, databake::Bake),
+    databake(path = icu_list::provider),
 )]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 pub struct SpecialCasePattern<'data> {
@@ -172,7 +172,7 @@ impl<'de: 'data, 'data> serde::Deserialize<'de> for ListJoinerPattern<'data> {
 }
 
 impl<'a> ListJoinerPattern<'a> {
-    /// Constructs a [`ListJoinerPattern`] from raw parts. Used by crabbake.
+    /// Constructs a [`ListJoinerPattern`] from raw parts. Used by databake.
     ///
     /// # Safety
     /// index_1 may be at most string.len()
@@ -262,14 +262,14 @@ mod datagen {
         pub fn make_conditional(
             &mut self,
             pattern: &str,
-            regex: &str,
+            regex: &StringMatcher<'static>,
             alternative_pattern: &str,
         ) -> Result<(), DataError> {
             let old = ListJoinerPattern::from_str(pattern, true, true)?;
             for i in 0..12 {
                 if self.0[i].default == old {
                     self.0[i].special_case = Some(SpecialCasePattern {
-                        condition: StringMatcher::new(regex)?,
+                        condition: regex.clone(),
                         pattern: ListJoinerPattern::from_str(
                             alternative_pattern,
                             i % 4 == 0 || i % 4 == 3, // allow_prefix = start or pair
@@ -326,12 +326,13 @@ mod datagen {
         }
     }
 
-    impl crabbake::Bakeable for ListJoinerPattern<'_> {
-        fn bake(&self, env: &crabbake::CrateEnv) -> crabbake::TokenStream {
+    impl databake::Bake for ListJoinerPattern<'_> {
+        fn bake(&self, env: &databake::CrateEnv) -> databake::TokenStream {
+            env.insert("icu_list");
             let string = (&*self.string).bake(env);
             let index_1 = self.index_1.bake(env);
             // Safe because our own data is safe
-            crabbake::quote! { unsafe {
+            databake::quote! { unsafe {
                 ::icu_list::provider::ListJoinerPattern::from_parts_unchecked(#string, #index_1)
             }}
         }
@@ -362,7 +363,7 @@ pub(crate) mod test {
         ])
         .unwrap();
         patterns
-            .make_conditional("{0}. {1}", "A", "{0} :o {1}")
+            .make_conditional("{0}. {1}", &StringMatcher::new("A").unwrap(), "{0} :o {1}")
             .unwrap();
         patterns
     }
@@ -434,6 +435,15 @@ pub(crate) mod test {
         assert_eq!(
             pattern.size_hint(ListStyle::Narrow, 200),
             LengthHint::exact(2 + 197 * 2) + LengthHint::between(2, 4)
+        );
+    }
+
+    #[test]
+    fn databake() {
+        databake::test_bake!(
+            ListJoinerPattern,
+            const: unsafe { crate::provider::ListJoinerPattern::from_parts_unchecked(", ", 2u8) },
+            icu_list
         );
     }
 }

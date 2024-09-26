@@ -2,8 +2,7 @@
 // called LICENSE at the top level of the ICU4X source tree
 // (online at: https://github.com/unicode-org/icu4x/blob/main/LICENSE ).
 
-use super::{runtime::Pattern, PatternItem};
-use crate::pattern::{reference, runtime};
+use super::{reference, runtime, PatternItem};
 use crate::{fields, options::preferences};
 #[cfg(feature = "datagen")]
 use crate::{provider, skeleton};
@@ -14,8 +13,8 @@ use icu_provider::{yoke, zerofrom};
 #[derive(Debug, PartialEq, Clone, Copy, yoke::Yokeable, zerofrom::ZeroFrom)]
 #[cfg_attr(
     feature = "datagen",
-    derive(serde::Serialize, crabbake::Bakeable),
-    crabbake(path = icu_datetime::pattern),
+    derive(serde::Serialize, databake::Bake),
+    databake(path = icu_datetime::pattern),
 )]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 #[allow(clippy::exhaustive_enums)] // this type is stable
@@ -119,7 +118,7 @@ impl CoarseHourCycle {
 /// and between h23 and h24. This function is naive as it is assumed that this application of
 /// the hour cycle will not change between h1x to h2x.
 pub(crate) fn naively_apply_preferences(
-    pattern: &mut Pattern,
+    pattern: &mut runtime::Pattern,
     preferences: &Option<preferences::Bag>,
 ) {
     // If there is a preference overiding the hour cycle, apply it now.

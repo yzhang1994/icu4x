@@ -7,7 +7,7 @@ pub mod ffi {
     use alloc::boxed::Box;
     use diplomat_runtime::DiplomatResult;
     use icu_decimal::{
-        options::{FixedDecimalFormatOptions, GroupingStrategy, SignDisplay},
+        options::{FixedDecimalFormatOptions, GroupingStrategy},
         provider::DecimalSymbolsV1Marker,
         FixedDecimalFormat,
     };
@@ -18,8 +18,9 @@ pub mod ffi {
     use writeable::Writeable;
 
     use crate::{
-        data_struct::ffi::ICU4XDataStruct, fixed_decimal::ffi::ICU4XFixedDecimal,
-        locale::ffi::ICU4XLocale, provider::ffi::ICU4XDataProvider,
+        data_struct::ffi::ICU4XDataStruct, errors::ffi::ICU4XError,
+        fixed_decimal::ffi::ICU4XFixedDecimal, locale::ffi::ICU4XLocale,
+        provider::ffi::ICU4XDataProvider,
     };
 
     #[diplomat::opaque]
@@ -34,39 +35,17 @@ pub mod ffi {
         Min2,
     }
 
-    pub enum ICU4XFixedDecimalSignDisplay {
-        Auto,
-        Never,
-        Always,
-        ExceptZero,
-        Negative,
-    }
-
-    pub struct ICU4XFixedDecimalFormatOptions {
-        pub grouping_strategy: ICU4XFixedDecimalGroupingStrategy,
-        pub sign_display: ICU4XFixedDecimalSignDisplay,
-    }
-
-    impl ICU4XFixedDecimalFormatOptions {
-        pub fn default() -> ICU4XFixedDecimalFormatOptions {
-            ICU4XFixedDecimalFormatOptions {
-                grouping_strategy: ICU4XFixedDecimalGroupingStrategy::Auto,
-                sign_display: ICU4XFixedDecimalSignDisplay::Auto,
-            }
-        }
-    }
-
     impl ICU4XFixedDecimalFormat {
         /// Creates a new [`ICU4XFixedDecimalFormat`] from locale data.
         #[diplomat::rust_link(icu::decimal::FixedDecimalFormat::try_new, FnInStruct)]
         pub fn try_new(
             locale: &ICU4XLocale,
             provider: &ICU4XDataProvider,
-            options: ICU4XFixedDecimalFormatOptions,
-        ) -> DiplomatResult<Box<ICU4XFixedDecimalFormat>, ()> {
+            grouping_strategy: ICU4XFixedDecimalGroupingStrategy,
+        ) -> DiplomatResult<Box<ICU4XFixedDecimalFormat>, ICU4XError> {
             use icu_provider::serde::AsDeserializingBufferProvider;
             let provider = provider.0.as_deserializing();
-            Self::try_new_impl(locale, &provider, options)
+            Self::try_new_impl(locale, &provider, grouping_strategy)
         }
 
         /// Creates a new [`ICU4XFixedDecimalFormat`] from preconstructed locale data in the form of an [`ICU4XDataStruct`]
@@ -76,8 +55,8 @@ pub mod ffi {
         /// Passing a consumed struct to this method will return an error.
         pub fn try_new_from_decimal_symbols_v1(
             data_struct: &ICU4XDataStruct,
-            options: ICU4XFixedDecimalFormatOptions,
-        ) -> DiplomatResult<Box<ICU4XFixedDecimalFormat>, ()> {
+            grouping_strategy: ICU4XFixedDecimalGroupingStrategy,
+        ) -> DiplomatResult<Box<ICU4XFixedDecimalFormat>, ICU4XError> {
             use icu_provider::prelude::AsDowncastingAnyProvider;
             let provider = AnyPayloadProvider {
                 key: DecimalSymbolsV1Marker::KEY,
@@ -87,42 +66,32 @@ pub mod ffi {
             Self::try_new_impl(
                 &ICU4XLocale(Locale::UND),
                 &provider.as_downcasting(),
-                options,
+                grouping_strategy,
             )
         }
 
         fn try_new_impl<D>(
             locale: &ICU4XLocale,
             provider: &D,
-            options: ICU4XFixedDecimalFormatOptions,
-        ) -> DiplomatResult<Box<ICU4XFixedDecimalFormat>, ()>
+            grouping_strategy: ICU4XFixedDecimalGroupingStrategy,
+        ) -> DiplomatResult<Box<ICU4XFixedDecimalFormat>, ICU4XError>
         where
             D: ResourceProvider<DecimalSymbolsV1Marker> + ?Sized,
         {
             let langid = locale.0.as_ref().clone();
 
-            let grouping_strategy = match options.grouping_strategy {
+            let grouping_strategy = match grouping_strategy {
                 ICU4XFixedDecimalGroupingStrategy::Auto => GroupingStrategy::Auto,
                 ICU4XFixedDecimalGroupingStrategy::Never => GroupingStrategy::Never,
                 ICU4XFixedDecimalGroupingStrategy::Always => GroupingStrategy::Always,
                 ICU4XFixedDecimalGroupingStrategy::Min2 => GroupingStrategy::Min2,
             };
-            let sign_display = match options.sign_display {
-                ICU4XFixedDecimalSignDisplay::Auto => SignDisplay::Auto,
-                ICU4XFixedDecimalSignDisplay::Never => SignDisplay::Never,
-                ICU4XFixedDecimalSignDisplay::Always => SignDisplay::Always,
-                ICU4XFixedDecimalSignDisplay::ExceptZero => SignDisplay::ExceptZero,
-                ICU4XFixedDecimalSignDisplay::Negative => SignDisplay::Negative,
-            };
             let mut options = FixedDecimalFormatOptions::default();
             options.grouping_strategy = grouping_strategy;
-            options.sign_display = sign_display;
-
-            if let Result::Ok(fdf) = FixedDecimalFormat::try_new(langid, provider, options) {
-                Ok(Box::new(ICU4XFixedDecimalFormat(fdf))).into()
-            } else {
-                Err(()).into()
-            }
+            FixedDecimalFormat::try_new(langid, provider, options)
+                .map(|fdf| Box::new(ICU4XFixedDecimalFormat(fdf)))
+                .map_err(Into::into)
+                .into()
         }
 
         /// Formats a [`ICU4XFixedDecimal`] to a string.
@@ -131,13 +100,13 @@ pub mod ffi {
             &self,
             value: &ICU4XFixedDecimal,
             write: &mut diplomat_runtime::DiplomatWriteable,
-        ) -> DiplomatResult<(), ()> {
+        ) -> DiplomatResult<(), ICU4XError> {
             #[allow(unused_variables)]
             let result = self
                 .0
                 .format(&value.0)
                 .write_to(write)
-                .map_err(|_| ())
+                .map_err(Into::into)
                 .into();
             write.flush();
             result

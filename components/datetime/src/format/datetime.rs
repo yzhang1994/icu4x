@@ -2,7 +2,9 @@
 // called LICENSE at the top level of the ICU4X source tree
 // (online at: https://github.com/unicode-org/icu4x/blob/main/LICENSE ).
 
-use crate::date::{DateTimeInput, DateTimeInputWithLocale, LocalizedDateTimeInput};
+use crate::date::{
+    DateTimeInput, DateTimeInputWithLocale, ExtractedDateTimeInput, LocalizedDateTimeInput,
+};
 use crate::error::DateTimeFormatError as Error;
 use crate::fields::{self, Field, FieldLength, FieldSymbol, Second, Week, Year};
 use crate::pattern::{
@@ -11,11 +13,12 @@ use crate::pattern::{
 };
 use crate::provider;
 use crate::provider::calendar::patterns::PatternPluralsFromPatternsV1Marker;
-use crate::provider::date_time::DateTimeSymbols;
+use crate::provider::date_time::{DateSymbols, TimeSymbols};
 use crate::provider::week_data::WeekDataV1;
 
-use alloc::string::ToString;
 use core::fmt;
+use fixed_decimal::FixedDecimal;
+use icu_decimal::FixedDecimalFormat;
 use icu_locid::Locale;
 use icu_plurals::PluralRules;
 use icu_provider::DataPayload;
@@ -46,29 +49,27 @@ use writeable::Writeable;
 ///
 /// let _ = format!("Date: {}", formatted_date);
 /// ```
-pub struct FormattedDateTime<'l, T>
-where
-    T: DateTimeInput,
-{
+pub struct FormattedDateTime<'l> {
     pub(crate) patterns: &'l DataPayload<PatternPluralsFromPatternsV1Marker>,
-    pub(crate) symbols: Option<&'l provider::calendar::DateSymbolsV1<'l>>,
-    pub(crate) datetime: &'l T,
+    pub(crate) date_symbols: Option<&'l provider::calendar::DateSymbolsV1<'l>>,
+    pub(crate) time_symbols: Option<&'l provider::calendar::TimeSymbolsV1<'l>>,
+    pub(crate) datetime: ExtractedDateTimeInput,
     pub(crate) week_data: Option<&'l WeekDataV1>,
     pub(crate) locale: &'l Locale,
     pub(crate) ordinal_rules: Option<&'l PluralRules>,
+    pub(crate) fixed_decimal_format: &'l FixedDecimalFormat,
 }
 
-impl<'l, T> Writeable for FormattedDateTime<'l, T>
-where
-    T: DateTimeInput,
-{
+impl<'l> Writeable for FormattedDateTime<'l> {
     fn write_to<W: fmt::Write + ?Sized>(&self, sink: &mut W) -> fmt::Result {
         write_pattern_plurals(
             &self.patterns.get().0,
-            self.symbols,
-            self.datetime,
+            self.date_symbols,
+            self.time_symbols,
+            &self.datetime,
             self.week_data,
             self.ordinal_rules,
+            self.fixed_decimal_format,
             self.locale,
             sink,
         )
@@ -78,76 +79,91 @@ where
     // TODO(#489): Implement write_len
 }
 
-impl<'l, T> fmt::Display for FormattedDateTime<'l, T>
-where
-    T: DateTimeInput,
-{
+impl<'l> fmt::Display for FormattedDateTime<'l> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.write_to(f)
     }
 }
 
-// Temporary formatting number with length.
-fn format_number<W>(result: &mut W, num: isize, length: FieldLength) -> Result<(), core::fmt::Error>
+// Apply length to input number and write to result using fixed_decimal_format.
+fn format_number<W>(
+    result: &mut W,
+    fixed_decimal_format: &FixedDecimalFormat,
+    mut num: FixedDecimal,
+    length: FieldLength,
+) -> fmt::Result
 where
     W: fmt::Write + ?Sized,
 {
     match length {
-        FieldLength::One => write!(result, "{}", num),
+        FieldLength::One => {}
         FieldLength::TwoDigit => {
-            if num < 100 {
-                write!(result, "{:0>width$}", num, width = 2)
-            } else {
-                let buffer = num.to_string();
-                let len = buffer.len();
-                // Safe because we've handled the case where len < 2 above
-                #[allow(clippy::indexing_slicing)]
-                result.write_str(&buffer[len - 2..])
-            }
+            num.pad_left(2);
+            num.truncate_left(2);
         }
-        FieldLength::Abbreviated => write!(result, "{:0>width$}", num, width = 3),
-        FieldLength::Wide => write!(result, "{:0>width$}", num, width = 4),
-        FieldLength::Narrow => write!(result, "{:0>width$}", num, width = 5),
-        FieldLength::Six => write!(result, "{:0>width$}", num, width = 6),
+        FieldLength::Abbreviated => {
+            num.pad_left(3);
+        }
+        FieldLength::Wide => {
+            num.pad_left(4);
+        }
+        FieldLength::Narrow => {
+            num.pad_left(5);
+        }
+        FieldLength::Six => {
+            num.pad_left(6);
+        }
         FieldLength::Fixed(p) => {
-            let buffer = num.to_string();
-            let len = buffer.len();
-            if len < p.into() {
-                write!(result, "{:0<width$}", num, width = p as usize)
-            } else {
-                // Safe because we've handled the case where len < p above
-                #[allow(clippy::indexing_slicing)]
-                result.write_str(&buffer[0..p as usize])
-            }
+            num.pad_left(p as i16);
+            num.truncate_left(p as i16);
         }
     }
+
+    let formatted = fixed_decimal_format.format(&num);
+    formatted.write_to(result)
 }
 
 fn write_pattern<T, W>(
     pattern: &crate::pattern::runtime::Pattern,
-    symbols: Option<&provider::calendar::DateSymbolsV1>,
+    date_symbols: Option<&provider::calendar::DateSymbolsV1>,
+    time_symbols: Option<&provider::calendar::TimeSymbolsV1>,
     loc_datetime: &impl LocalizedDateTimeInput<T>,
+    fixed_decimal_format: &FixedDecimalFormat,
     w: &mut W,
 ) -> Result<(), Error>
 where
     T: DateTimeInput,
     W: fmt::Write + ?Sized,
 {
-    for item in pattern.items.iter() {
-        match item {
-            PatternItem::Field(field) => write_field(pattern, field, symbols, loc_datetime, w)?,
-            PatternItem::Literal(ch) => w.write_char(ch)?,
+    let mut iter = pattern.items.iter().peekable();
+    loop {
+        match iter.next() {
+            Some(PatternItem::Field(field)) => write_field(
+                pattern,
+                field,
+                iter.peek(),
+                date_symbols,
+                time_symbols,
+                loc_datetime,
+                fixed_decimal_format,
+                w,
+            )?,
+            Some(PatternItem::Literal(ch)) => w.write_char(ch)?,
+            None => break,
         }
     }
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn write_pattern_plurals<T, W>(
     patterns: &PatternPlurals,
-    symbols: Option<&provider::calendar::DateSymbolsV1>,
+    date_symbols: Option<&provider::calendar::DateSymbolsV1>,
+    time_symbols: Option<&provider::calendar::TimeSymbolsV1>,
     datetime: &T,
     week_data: Option<&WeekDataV1>,
     ordinal_rules: Option<&PluralRules>,
+    fixed_decimal_format: &FixedDecimalFormat,
     locale: &Locale,
     w: &mut W,
 ) -> Result<(), Error>
@@ -157,7 +173,14 @@ where
 {
     let loc_datetime = DateTimeInputWithLocale::new(datetime, week_data.map(|d| &d.0), locale);
     let pattern = patterns.select(&loc_datetime, ordinal_rules)?;
-    write_pattern(pattern, symbols, &loc_datetime, w)
+    write_pattern(
+        pattern,
+        date_symbols,
+        time_symbols,
+        &loc_datetime,
+        fixed_decimal_format,
+        w,
+    )
 }
 
 // This function assumes that the correct decision has been
@@ -165,11 +188,15 @@ where
 //
 // When modifying the list of fields using symbols,
 // update the matching query in `analyze_pattern` function.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn write_field<T, W>(
     pattern: &crate::pattern::runtime::Pattern,
     field: fields::Field,
-    symbols: Option<&crate::provider::calendar::DateSymbolsV1>,
+    next_item: Option<&PatternItem>,
+    date_symbols: Option<&crate::provider::calendar::DateSymbolsV1>,
+    time_symbols: Option<&crate::provider::calendar::TimeSymbolsV1>,
     datetime: &impl LocalizedDateTimeInput<T>,
+    fixed_decimal_format: &FixedDecimalFormat,
     w: &mut W,
 ) -> Result<(), Error>
 where
@@ -179,8 +206,8 @@ where
     match field.symbol {
         FieldSymbol::Era => {
             #[allow(clippy::expect_used)] // TODO(#1668) Clippy exceptions need docs or fixing.
-            let symbol = symbols
-                .expect("Expect symbols to be present")
+            let symbol = date_symbols
+                .expect("Expect date symbols to be present")
                 .get_symbol_for_era(
                     field.length,
                     datetime
@@ -194,29 +221,40 @@ where
         FieldSymbol::Year(year) => match year {
             Year::Calendar => format_number(
                 w,
-                datetime
-                    .datetime()
-                    .year()
-                    .ok_or(Error::MissingInputField)?
-                    .number as isize,
+                fixed_decimal_format,
+                FixedDecimal::from(
+                    datetime
+                        .datetime()
+                        .year()
+                        .ok_or(Error::MissingInputField)?
+                        .number,
+                ),
                 field.length,
             )?,
-            Year::WeekOf => format_number(w, datetime.year_week()?.number as isize, field.length)?,
+            Year::WeekOf => format_number(
+                w,
+                fixed_decimal_format,
+                FixedDecimal::from(datetime.year_week()?.number),
+                field.length,
+            )?,
         },
         FieldSymbol::Month(month) => match field.length {
             FieldLength::One | FieldLength::TwoDigit => format_number(
                 w,
-                datetime
-                    .datetime()
-                    .month()
-                    .ok_or(Error::MissingInputField)?
-                    .number as isize,
+                fixed_decimal_format,
+                FixedDecimal::from(
+                    datetime
+                        .datetime()
+                        .month()
+                        .ok_or(Error::MissingInputField)?
+                        .ordinal,
+                ),
                 field.length,
             )?,
             length => {
                 #[allow(clippy::expect_used)] // TODO(#1668) Clippy exceptions need docs or fixing.
-                let symbol = symbols
-                    .expect("Expect symbols to be present")
+                let symbol = date_symbols
+                    .expect("Expect date symbols to be present")
                     .get_symbol_for_month(
                         month,
                         length,
@@ -224,19 +262,24 @@ where
                             .datetime()
                             .month()
                             .ok_or(Error::MissingInputField)?
-                            .number as usize
-                            - 1,
+                            .code,
                     )?;
                 w.write_str(symbol)?
             }
         },
         FieldSymbol::Week(week) => match week {
-            Week::WeekOfYear => {
-                format_number(w, datetime.week_of_year()?.0 as isize, field.length)?
-            }
-            Week::WeekOfMonth => {
-                format_number(w, datetime.week_of_month()?.0 as isize, field.length)?
-            }
+            Week::WeekOfYear => format_number(
+                w,
+                fixed_decimal_format,
+                FixedDecimal::from(datetime.week_of_year()?.0),
+                field.length,
+            )?,
+            Week::WeekOfMonth => format_number(
+                w,
+                fixed_decimal_format,
+                FixedDecimal::from(datetime.week_of_month()?.0),
+                field.length,
+            )?,
         },
         FieldSymbol::Weekday(weekday) => {
             let dow = datetime
@@ -244,24 +287,25 @@ where
                 .iso_weekday()
                 .ok_or(Error::MissingInputField)?;
             #[allow(clippy::expect_used)] // TODO(#1668) Clippy exceptions need docs or fixing.
-            let symbol = symbols
-                .expect("Expect symbols to be present")
+            let symbol = date_symbols
+                .expect("Expect date symbols to be present")
                 .get_symbol_for_weekday(weekday, field.length, dow)?;
             w.write_str(symbol)?
         }
         symbol @ FieldSymbol::Day(day) => format_number(
             w,
-            match day {
+            fixed_decimal_format,
+            FixedDecimal::from(match day {
                 fields::Day::DayOfMonth => {
                     datetime
                         .datetime()
                         .day_of_month()
                         .ok_or(Error::MissingInputField)?
-                        .0 as isize
+                        .0
                 }
-                fields::Day::DayOfWeekInMonth => datetime.day_of_week_in_month()?.0 as isize,
+                fields::Day::DayOfWeekInMonth => datetime.day_of_week_in_month()?.0,
                 _ => return Err(Error::UnsupportedField(symbol)),
-            },
+            }),
             field.length,
         )?,
         FieldSymbol::Hour(hour) => {
@@ -286,45 +330,75 @@ where
                     }
                 }
             };
-            format_number(w, value, field.length)?
+            format_number(
+                w,
+                fixed_decimal_format,
+                FixedDecimal::from(value),
+                field.length,
+            )?
         }
         FieldSymbol::Minute => format_number(
             w,
-            usize::from(
+            fixed_decimal_format,
+            FixedDecimal::from(usize::from(
                 datetime
                     .datetime()
                     .minute()
                     .ok_or(Error::MissingInputField)?,
-            ) as isize,
+            )),
             field.length,
         )?,
-        FieldSymbol::Second(Second::Second) => format_number(
-            w,
-            usize::from(
+        FieldSymbol::Second(Second::Second) => {
+            let mut seconds = FixedDecimal::from(usize::from(
                 datetime
                     .datetime()
                     .second()
                     .ok_or(Error::MissingInputField)?,
-            ) as isize,
-            field.length,
-        )?,
-        FieldSymbol::Second(Second::FractionalSecond) => format_number(
-            w,
-            usize::from(
-                datetime
-                    .datetime()
-                    .nanosecond()
-                    .ok_or(Error::MissingInputField)?,
-            ) as isize,
-            field.length,
-        )?,
+            ));
+            if let Some(PatternItem::Field(next_field)) = next_item {
+                if let FieldSymbol::Second(Second::FractionalSecond) = next_field.symbol {
+                    let mut fraction = FixedDecimal::from(usize::from(
+                        datetime
+                            .datetime()
+                            .nanosecond()
+                            .ok_or(Error::MissingInputField)?,
+                    ));
+
+                    // We only support fixed field length for fractional seconds.
+                    let precision = match next_field.length {
+                        FieldLength::Fixed(p) => p,
+                        _ => {
+                            return Err(Error::Pattern(
+                                crate::pattern::PatternError::FieldLengthInvalid(
+                                    FieldSymbol::Second(Second::FractionalSecond),
+                                ),
+                            ));
+                        }
+                    };
+
+                    // We store fractional seconds as nanoseconds, convert to seconds.
+                    fraction
+                        .multiply_pow10(-9)
+                        .map_err(|_| Error::FixedDecimal)?;
+
+                    seconds
+                        .concatenate_right(fraction)
+                        .map_err(|_| Error::FixedDecimal)?;
+                    seconds.pad_right(-(precision as i16));
+                }
+            }
+            format_number(w, fixed_decimal_format, seconds, field.length)?
+        }
+        FieldSymbol::Second(Second::FractionalSecond) => {
+            // Formatting of fractional seconds is handled when formatting seconds.
+        }
         field @ FieldSymbol::Second(Second::Millisecond) => {
             return Err(Error::UnsupportedField(field))
         }
         FieldSymbol::DayPeriod(period) => {
             #[allow(clippy::expect_used)] // TODO(#1668) Clippy exceptions need docs or fixing.
-            let symbol = symbols
-                .expect("Expect symbols to be present")
+            let symbol = time_symbols
+                .expect("Expect time symbols to be present")
                 .get_symbol_for_day_period(
                     period,
                     field.length,
@@ -346,7 +420,9 @@ where
 #[derive(Default)]
 pub struct RequiredData {
     // DateSymbolsV1 is required.
-    pub symbols_data: bool,
+    pub date_symbols_data: bool,
+    // TimeSymbolsV1 is required.
+    pub time_symbols_data: bool,
     // WeekDataV1 is required.
     pub week_data: bool,
 }
@@ -367,16 +443,20 @@ impl RequiredData {
         });
 
         for field in fields {
-            if !self.symbols_data {
-                self.symbols_data = match field.symbol {
+            if !self.date_symbols_data {
+                self.date_symbols_data = match field.symbol {
                     FieldSymbol::Era => true,
                     FieldSymbol::Month(_) => {
                         !matches!(field.length, FieldLength::One | FieldLength::TwoDigit)
                     }
-                    FieldSymbol::Weekday(_) | FieldSymbol::DayPeriod(_) => true,
+                    FieldSymbol::Weekday(_) => true,
                     _ => false,
                 }
             }
+            if !self.time_symbols_data {
+                self.time_symbols_data = matches!(field.symbol, FieldSymbol::DayPeriod(_));
+            }
+
             if !self.week_data {
                 self.week_data = matches!(
                     field.symbol,
@@ -385,7 +465,7 @@ impl RequiredData {
             }
 
             if supports_time_zones {
-                if self.symbols_data && self.week_data {
+                if self.date_symbols_data && self.time_symbols_data && self.week_data {
                     // If we support time zones, and require everything else, we
                     // know all we need to return already.
                     return Ok(true);
@@ -420,19 +500,28 @@ pub fn analyze_patterns(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use icu_decimal::options::{FixedDecimalFormatOptions, GroupingStrategy};
 
     #[test]
     #[cfg(feature = "serde")]
     fn test_basic() {
-        use crate::provider::calendar::DateSymbolsV1Marker;
+        use crate::provider::calendar::{DateSymbolsV1Marker, TimeSymbolsV1Marker};
         use icu_calendar::DateTime;
         use icu_provider::prelude::*;
 
         let provider = icu_testdata::get_provider();
         let locale: Locale = "en-u-ca-gregory".parse().unwrap();
-        let data: DataPayload<DateSymbolsV1Marker> = provider
+        let date_data: DataPayload<DateSymbolsV1Marker> = provider
             .load_resource(&DataRequest {
-                options: locale.into(),
+                options: locale.clone().into(),
+                metadata: Default::default(),
+            })
+            .unwrap()
+            .take_payload()
+            .unwrap();
+        let time_data: DataPayload<TimeSymbolsV1Marker> = provider
+            .load_resource(&DataRequest {
+                options: locale.clone().into(),
                 metadata: Default::default(),
             })
             .unwrap()
@@ -440,13 +529,25 @@ mod tests {
             .unwrap();
         let pattern = "MMM".parse().unwrap();
         let datetime = DateTime::new_gregorian_datetime(2020, 8, 1, 12, 34, 28).unwrap();
+        let fixed_decimal_format =
+            FixedDecimalFormat::try_new(locale.id.language, &provider, Default::default()).unwrap();
+
         let mut sink = String::new();
         let loc_datetime = DateTimeInputWithLocale::new(&datetime, None, &"und".parse().unwrap());
-        write_pattern(&pattern, Some(data.get()), &loc_datetime, &mut sink).unwrap();
+        write_pattern(
+            &pattern,
+            Some(date_data.get()),
+            Some(time_data.get()),
+            &loc_datetime,
+            &fixed_decimal_format,
+            &mut sink,
+        )
+        .unwrap();
         println!("{}", sink);
     }
 
     #[test]
+    #[cfg(feature = "serde")]
     fn test_format_number() {
         let values = &[2, 20, 201, 2017, 20173];
         let samples = &[
@@ -458,10 +559,27 @@ mod tests {
             ),
             (FieldLength::Wide, ["0002", "0020", "0201", "2017", "20173"]),
         ];
+
+        let provider = icu_testdata::get_provider();
+        let mut fixed_decimal_format_options = FixedDecimalFormatOptions::default();
+        fixed_decimal_format_options.grouping_strategy = GroupingStrategy::Never;
+        let fixed_decimal_format = FixedDecimalFormat::try_new(
+            icu_locid::locale!("en"),
+            &provider,
+            fixed_decimal_format_options,
+        )
+        .unwrap();
+
         for (length, expected) in samples {
             for (value, expected) in values.iter().zip(expected) {
                 let mut s = String::new();
-                format_number(&mut s, *value, *length).unwrap();
+                format_number(
+                    &mut s,
+                    &fixed_decimal_format,
+                    FixedDecimal::from(*value as i32),
+                    *length,
+                )
+                .unwrap();
                 assert_eq!(s, *expected);
             }
         }

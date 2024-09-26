@@ -11,7 +11,8 @@ use core::str::FromStr;
 use super::parse_gregorian_from_str;
 use super::time_zone::MockTimeZone;
 
-use icu_calendar::{DateTime, Gregorian};
+use icu_calendar::any_calendar::AnyCalendarKind;
+use icu_calendar::{Date, DateTime, Gregorian, Iso};
 
 /// A temporary struct that implements [`ZonedDateTimeInput`]
 /// and is used in tests, benchmarks and examples of this component.
@@ -100,11 +101,11 @@ impl FromStr for MockZonedDateTime {
 
 impl DateInput for MockZonedDateTime {
     type Calendar = Gregorian;
-    fn year(&self) -> Option<Year> {
+    fn year(&self) -> Option<FormattableYear> {
         self.datetime.year()
     }
 
-    fn month(&self) -> Option<Month> {
+    fn month(&self) -> Option<FormattableMonth> {
         self.datetime.month()
     }
 
@@ -118,6 +119,14 @@ impl DateInput for MockZonedDateTime {
 
     fn day_of_year_info(&self) -> Option<DayOfYearInfo> {
         self.datetime.day_of_year_info()
+    }
+
+    fn any_calendar_kind(&self) -> Option<AnyCalendarKind> {
+        Some(AnyCalendarKind::Iso)
+    }
+
+    fn to_iso(&self) -> Date<Iso> {
+        Date::to_iso(&self.datetime.date)
     }
 }
 
@@ -144,15 +153,15 @@ impl TimeZoneInput for MockZonedDateTime {
         self.time_zone.gmt_offset()
     }
 
-    fn time_zone_id(&self) -> Option<&TimeZoneBcp47Id> {
+    fn time_zone_id(&self) -> Option<TimeZoneBcp47Id> {
         self.time_zone.time_zone_id()
     }
 
-    fn metazone_id(&self) -> Option<&MetaZoneId> {
+    fn metazone_id(&self) -> Option<MetaZoneId> {
         self.time_zone.metazone_id()
     }
 
-    fn time_variant(&self) -> Option<&TinyStr8> {
+    fn time_variant(&self) -> Option<TinyStr8> {
         self.time_zone.time_variant()
     }
 }

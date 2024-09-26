@@ -9,19 +9,18 @@
 /// # Examples
 ///
 /// ```
-/// use icu::locid::{language, subtags::Language};
+/// use icu::locid::{subtags_language as language, subtags::Language};
 ///
 /// const DE: Language = language!("DE");
 ///
 /// let de: Language = "DE".parse().unwrap();
 ///
-/// assert_eq!(DE, "de");
 /// assert_eq!(DE, de);
 /// ```
 ///
 /// [`Language`]: crate::subtags::Language
 #[macro_export]
-macro_rules! language {
+macro_rules! subtags_language {
     ($language:literal) => {{
         const R: $crate::subtags::Language =
             match $crate::subtags::Language::from_bytes($language.as_bytes()) {
@@ -40,19 +39,18 @@ macro_rules! language {
 /// # Examples
 ///
 /// ```
-/// use icu::locid::{script, subtags::Script};
+/// use icu::locid::{subtags_script as script, subtags::Script};
 ///
 /// const ARAB: Script = script!("aRAB");
 ///
 /// let arab: Script = "aRaB".parse().unwrap();
 ///
-/// assert_eq!(ARAB, "Arab");
 /// assert_eq!(ARAB, arab);
 /// ```
 ///
 /// [`Script`]: crate::subtags::Script
 #[macro_export]
-macro_rules! script {
+macro_rules! subtags_script {
     ($script:literal) => {{
         const R: $crate::subtags::Script =
             match $crate::subtags::Script::from_bytes($script.as_bytes()) {
@@ -71,19 +69,18 @@ macro_rules! script {
 /// # Examples
 ///
 /// ```
-/// use icu::locid::{region, subtags::Region};
+/// use icu::locid::{subtags_region as region, subtags::Region};
 ///
 /// const CN: Region = region!("cn");
 ///
 /// let cn: Region = "cn".parse().unwrap();
 ///
-/// assert_eq!(CN, "CN");
 /// assert_eq!(CN, cn);
 /// ```
 ///
 /// [`Region`]: crate::subtags::Region
 #[macro_export]
-macro_rules! region {
+macro_rules! subtags_region {
     ($region:literal) => {{
         const R: $crate::subtags::Region =
             match $crate::subtags::Region::from_bytes($region.as_bytes()) {
@@ -102,19 +99,18 @@ macro_rules! region {
 /// # Examples
 ///
 /// ```
-/// use icu::locid::{subtags::Variant, variant};
+/// use icu::locid::{subtags::Variant, subtags_variant as variant};
 ///
 /// const POSIX: Variant = variant!("Posix");
 ///
 /// let posix: Variant = "Posix".parse().unwrap();
 ///
-/// assert_eq!(POSIX, "posix");
 /// assert_eq!(POSIX, posix);
 /// ```
 ///
 /// [`Variant`]: crate::subtags::Variant
 #[macro_export]
-macro_rules! variant {
+macro_rules! subtags_variant {
     ($variant:literal) => {{
         const R: $crate::subtags::Variant =
             match $crate::subtags::Variant::from_bytes($variant.as_bytes()) {
@@ -139,20 +135,19 @@ macro_rules! variant {
 ///
 /// let de_at: LanguageIdentifier = "de_at".parse().unwrap();
 ///
-/// assert_eq!(DE_AT, "de-AT");
 /// assert_eq!(DE_AT, de_at);
 /// ```
 ///
-/// *Note*: The macro cannot produce language identifiers with variants due to const
+/// *Note*: The macro cannot produce language identifiers with more than one variants due to const
 /// limitations (see [`Heap Allocations in Constants`]):
 ///
 /// ```compile_fail
-/// icu::locid::langid("de_at-foobar");
+/// icu::locid::langid!("und-variant1-variant2");
 /// ```
 ///
 /// Use runtime parsing instead:
 /// ```
-/// "de_at-foobar"
+/// "und-variant1-variant2"
 ///     .parse::<icu::locid::LanguageIdentifier>()
 ///     .unwrap();
 /// ```
@@ -163,16 +158,18 @@ macro_rules! variant {
 macro_rules! langid {
     ($langid:literal) => {{
         const R: $crate::LanguageIdentifier =
-            match $crate::LanguageIdentifier::from_bytes_without_variants($langid.as_bytes()) {
-                Ok((language, script, region)) => $crate::LanguageIdentifier {
+            match $crate::LanguageIdentifier::from_bytes_with_single_variant($langid.as_bytes()) {
+                Ok((language, script, region, variant)) => $crate::LanguageIdentifier {
                     language,
                     script,
                     region,
-                    variants: $crate::subtags::Variants::new(),
+                    variants: match variant {
+                        Some(v) => $crate::subtags::Variants::from_variant(v),
+                        None => $crate::subtags::Variants::new(),
+                    }
                 },
                 #[allow(clippy::panic)] // const context
-                _ => panic!(concat!("Invalid language code: ", $langid, " . Note that variant tags are not \
-                                        supported by the langid! macro, use runtime parsing instead.")),
+                _ => panic!(concat!("Invalid language code: ", $langid, " . Note langid! macro can only support up to a single variant tag. Use runtime parsing instead.")),
             };
         R
     }};
@@ -191,12 +188,11 @@ macro_rules! langid {
 ///
 /// let de_at: Locale = "de_at".parse().unwrap();
 ///
-/// assert_eq!(DE_AT, "de-AT");
 /// assert_eq!(DE_AT, de_at);
 /// ```
 ///
-/// *Note*: The macro cannot produce locales with variants or Unicode extensions due to
-/// const limitations (see [`Heap Allocations in Constants`]):
+/// *Note*: The macro cannot produce locales with more than one variant or extensions due to const
+/// limitations (see [`Heap Allocations in Constants`]):
 ///
 /// ```compile_fail
 /// icu::locid::locale!("en-US-u-ca-ja");
@@ -212,20 +208,27 @@ macro_rules! langid {
 macro_rules! locale {
     ($locale:literal) => {{
         const R: $crate::Locale =
-            match $crate::LanguageIdentifier::from_bytes_without_variants($locale.as_bytes()) {
-                Ok((language, script, region)) => $crate::Locale {
+            match $crate::LanguageIdentifier::from_bytes_with_single_variant($locale.as_bytes()) {
+                Ok((language, script, region, variant)) => $crate::Locale {
                     id: $crate::LanguageIdentifier {
                         language,
                         script,
                         region,
-                        variants: $crate::subtags::Variants::new(),
+                        variants: match variant {
+                            Some(v) => $crate::subtags::Variants::from_variant(v),
+                            None => $crate::subtags::Variants::new(),
+                        },
                     },
                     extensions: $crate::extensions::Extensions::new(),
                 },
                 #[allow(clippy::panic)] // const context
-                _ => panic!(concat!("Invalid language code: ", $locale, " . Note that variant tags and \
-                                        Unicode extensions are not supported by the locale! macro, use \
-                                        runtime parsing instead.")),
+                _ => panic!(concat!(
+                    "Invalid language code: ",
+                    $locale,
+                    " . Note the locale! macro only supports up to one variant tag; \
+                                        unicode extensions are not supported. Use \
+                                        runtime parsing instead."
+                )),
             };
         R
     }};
@@ -239,23 +242,23 @@ macro_rules! locale {
 ///
 /// ```
 /// use icu::locid::extensions::unicode::{Key, Value};
-/// use icu::locid::unicode_ext_key;
+/// use icu::locid::{extensions_unicode_key as key, extensions_unicode_value as value};
 /// use icu::locid::Locale;
-/// use writeable::Writeable;
 ///
-/// const CALENDAR_KEY: Key = unicode_ext_key!("ca");
+/// const CALENDAR_KEY: Key = key!("ca");
+/// const CALENDAR_VALUE: Value = value!("buddhist");
 ///
 /// let loc: Locale = "de-u-ca-buddhist".parse().unwrap();
 ///
 /// assert_eq!(
 ///     loc.extensions.unicode.keywords.get(&CALENDAR_KEY),
-///     Some(&Value::from_bytes(b"buddhist").unwrap())
+///     Some(&CALENDAR_VALUE)
 /// );
 /// ```
 ///
 /// [`Key`]: crate::extensions::unicode::Key
 #[macro_export]
-macro_rules! unicode_ext_key {
+macro_rules! extensions_unicode_key {
     ($key:literal) => {{
         const R: $crate::extensions::unicode::Key =
             match $crate::extensions::unicode::Key::from_bytes($key.as_bytes()) {
@@ -275,12 +278,11 @@ macro_rules! unicode_ext_key {
 ///
 /// ```
 /// use icu::locid::extensions::unicode::{Key, Value};
+/// use icu::locid::{extensions_unicode_key as key, extensions_unicode_value as value};
 /// use icu::locid::Locale;
-/// use icu::locid::{unicode_ext_key, unicode_ext_value};
-/// use writeable::Writeable;
 ///
-/// const CALENDAR_KEY: Key = unicode_ext_key!("ca");
-/// const CALENDAR_VALUE: Value = unicode_ext_value!("buddhist");
+/// const CALENDAR_KEY: Key = key!("ca");
+/// const CALENDAR_VALUE: Value = value!("buddhist");
 ///
 /// let loc: Locale = "de-u-ca-buddhist".parse().unwrap();
 ///
@@ -292,7 +294,7 @@ macro_rules! unicode_ext_key {
 ///
 /// [`Value`]: crate::extensions::unicode::Value
 #[macro_export]
-macro_rules! unicode_ext_value {
+macro_rules! extensions_unicode_value {
     ($value:literal) => {{
         // What we want:
         // const R: $crate::extensions::unicode::Value =
@@ -321,11 +323,10 @@ macro_rules! unicode_ext_value {
 ///
 /// ```
 /// use icu::locid::extensions::transform::{Key, Value};
-/// use icu::locid::transform_ext_key;
+/// use icu::locid::extensions_transform_key as key;
 /// use icu::locid::Locale;
-/// use writeable::Writeable;
 ///
-/// const HYBRID_KEY: Key = transform_ext_key!("h0");
+/// const HYBRID_KEY: Key = key!("h0");
 ///
 /// let loc: Locale = "hi-t-en-h0-hybrid".parse().unwrap();
 ///
@@ -337,7 +338,7 @@ macro_rules! unicode_ext_value {
 ///
 /// [`Key`]: crate::extensions::transform::Key
 #[macro_export]
-macro_rules! transform_ext_key {
+macro_rules! extensions_transform_key {
     ($key:literal) => {{
         const R: $crate::extensions::transform::Key =
             match $crate::extensions::transform::Key::from_bytes($key.as_bytes()) {
@@ -351,84 +352,20 @@ macro_rules! transform_ext_key {
 
 #[cfg(test)]
 mod test {
-    const LANG_PL: crate::subtags::Language = language!("pL");
-    const SCRIPT_LATN: crate::subtags::Script = script!("lAtN");
-    const REGION_US: crate::subtags::Region = region!("us");
-    const VARIANT_MACOS: crate::subtags::Variant = variant!("MACOS");
-    const LANGID: crate::LanguageIdentifier = langid!("de-Arab-AT");
-    const LOCALE: crate::Locale = locale!("de-Arab-AT");
-    const UNICODE_EXT_KEY: crate::extensions::unicode::Key = unicode_ext_key!("ms");
-    const TRANSFORM_EXT_KEY: crate::extensions::transform::Key = transform_ext_key!("h0");
+    use crate::LanguageIdentifier;
+    use crate::Locale;
 
     #[test]
-    fn language() {
-        let lang = language!("Pl");
-
-        assert_eq!(lang, "pl");
-        assert_eq!(LANG_PL, "pl");
-        assert_eq!(lang, LANG_PL);
+    fn test_langid_macro_can_parse_langid_with_single_variant() {
+        const DE_AT_FOOBAR: LanguageIdentifier = langid!("de_at-foobar");
+        let de_at_foobar: LanguageIdentifier = "de_at-foobar".parse().unwrap();
+        assert_eq!(DE_AT_FOOBAR, de_at_foobar);
     }
 
     #[test]
-    fn script() {
-        let script = script!("latn");
-
-        assert_eq!(script, "Latn");
-        assert_eq!(SCRIPT_LATN, "Latn");
-        assert_eq!(script, SCRIPT_LATN);
-    }
-
-    #[test]
-    fn region() {
-        let region = region!("us");
-
-        assert_eq!(region, "US");
-        assert_eq!(REGION_US, "US");
-        assert_eq!(region, REGION_US);
-    }
-
-    #[test]
-    fn variant() {
-        let variant = variant!("macOS");
-
-        assert_eq!(variant, "macos");
-        assert_eq!(VARIANT_MACOS, "macos");
-        assert_eq!(variant, VARIANT_MACOS);
-    }
-
-    #[test]
-    fn langid() {
-        let langid = langid!("de_Arab_aT");
-
-        assert_eq!(langid.to_string(), "de-Arab-AT");
-        assert_eq!(LANGID.to_string(), "de-Arab-AT");
-        assert_eq!(langid, LANGID);
-    }
-
-    #[test]
-    fn locale() {
-        let locale = locale!("de_Arab_aT");
-
-        assert_eq!(locale.to_string(), "de-Arab-AT");
-        assert_eq!(LOCALE.to_string(), "de-Arab-AT");
-        assert_eq!(locale, LOCALE);
-    }
-
-    #[test]
-    fn unicode_ext_key() {
-        let unicode_ext_key = unicode_ext_key!("MS");
-
-        assert_eq!(unicode_ext_key.to_string(), "ms");
-        assert_eq!(UNICODE_EXT_KEY.to_string(), "ms");
-        assert_eq!(unicode_ext_key, UNICODE_EXT_KEY);
-    }
-
-    #[test]
-    fn transform_ext_key() {
-        let transform_ext_key = transform_ext_key!("H0");
-
-        assert_eq!(transform_ext_key.to_string(), "h0");
-        assert_eq!(TRANSFORM_EXT_KEY.to_string(), "h0");
-        assert_eq!(transform_ext_key, TRANSFORM_EXT_KEY);
+    fn test_locale_macro_can_parse_locale_with_single_variant() {
+        const DE_AT_FOOBAR: Locale = locale!("de_at-foobar");
+        let de_at_foobar: Locale = "de_at-foobar".parse().unwrap();
+        assert_eq!(DE_AT_FOOBAR, de_at_foobar);
     }
 }

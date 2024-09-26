@@ -5,8 +5,9 @@
 use core::cmp::Ordering;
 use core::str::FromStr;
 
+use crate::ordering::SubtagOrderingResult;
 use crate::parser::{
-    get_subtag_iterator, parse_language_identifier, parse_language_identifier_without_variants,
+    get_subtag_iterator, parse_language_identifier, parse_language_identifier_with_single_variant,
     ParserError, ParserMode,
 };
 use crate::subtags;
@@ -18,15 +19,15 @@ use alloc::string::ToString;
 /// # Examples
 ///
 /// ```
-/// use icu::locid::LanguageIdentifier;
+/// use icu::locid::{LanguageIdentifier, subtags::*};
 ///
 /// let li: LanguageIdentifier = "en-US".parse().expect("Failed to parse.");
 ///
-/// assert_eq!(li.language, "en");
+/// assert_eq!(li.language, "en".parse::<Language>().unwrap());
 /// assert_eq!(li.script, None);
-/// assert_eq!(li.region.unwrap(), "US");
+/// assert_eq!(li.region.unwrap(), "US".parse::<Region>().unwrap());
 /// assert_eq!(li.variants.len(), 0);
-/// assert_eq!(li, "en-US");
+/// assert_eq!(li.to_string(), "en-US");
 /// ```
 ///
 /// # Parsing
@@ -46,18 +47,18 @@ use alloc::string::ToString;
 /// # Examples
 ///
 /// ```
-/// use icu::locid::LanguageIdentifier;
+/// use icu::locid::{LanguageIdentifier, subtags::*};
 ///
 /// let li: LanguageIdentifier = "eN_latn_Us-Valencia".parse().expect("Failed to parse.");
 ///
-/// assert_eq!(li.language, "en");
-/// assert_eq!(li.script.unwrap(), "Latn");
-/// assert_eq!(li.region.unwrap(), "US");
-/// assert_eq!(li.variants.get(0).unwrap(), "valencia");
+/// assert_eq!(li.language, "en".parse::<Language>().unwrap());
+/// assert_eq!(li.script, "Latn".parse::<Script>().ok());
+/// assert_eq!(li.region, "US".parse::<Region>().ok());
+/// assert_eq!(li.variants.get(0), "valencia".parse::<Variant>().ok().as_ref());
 /// ```
 ///
 /// [`Unicode BCP47 Language Identifier`]: https://unicode.org/reports/tr35/tr35.html#Unicode_language_identifier
-#[derive(Default, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
+#[derive(Default, PartialEq, Eq, Clone, Hash)]
 #[allow(clippy::exhaustive_structs)] // This struct is stable (and invoked by a macro)
 pub struct LanguageIdentifier {
     /// Language subtag of the language identifier.
@@ -88,19 +89,21 @@ impl LanguageIdentifier {
     }
 
     #[doc(hidden)]
+    #[allow(clippy::type_complexity)]
     // The return type should be `Result<Self, ParserError>` once the `const_precise_live_drops`
     // is stabilized ([rust-lang#73255](https://github.com/rust-lang/rust/issues/73255)).
-    pub const fn from_bytes_without_variants(
+    pub const fn from_bytes_with_single_variant(
         v: &[u8],
     ) -> Result<
         (
             subtags::Language,
             Option<subtags::Script>,
             Option<subtags::Region>,
+            Option<subtags::Variant>,
         ),
         ParserError,
     > {
-        parse_language_identifier_without_variants(v, ParserMode::LanguageIdentifier)
+        parse_language_identifier_with_single_variant(v, ParserMode::LanguageIdentifier)
     }
 
     /// A constructor which takes a utf8 slice which may contain extension keys,
@@ -159,10 +162,10 @@ impl LanguageIdentifier {
         Ok(lang_id.to_string())
     }
 
-    /// Compare this `LanguageIdentifier` with a BCP-47 string.
+    /// Compare this [`LanguageIdentifier`] with BCP-47 bytes.
     ///
     /// The return value is equivalent to what would happen if you first converted this
-    /// `LanguageIdentifier` to a BCP-47 string and then performed a byte comparison.
+    /// [`LanguageIdentifier`] to a BCP-47 string and then performed a byte comparison.
     ///
     /// This function is case-sensitive and results in a *total order*, so it is appropriate for
     /// binary search. The only argument producing [`Ordering::Equal`] is `self.to_string()`.
@@ -173,28 +176,69 @@ impl LanguageIdentifier {
     /// use icu::locid::LanguageIdentifier;
     /// use std::cmp::Ordering;
     ///
-    /// let bcp47_strings: &[&[u8]] = &[
-    ///     b"pl-Latn-PL",
-    ///     b"und",
-    ///     b"und-Adlm",
-    ///     b"und-GB",
-    ///     b"und-ZA",
-    ///     b"und-fonipa",
-    ///     b"zh",
+    /// let bcp47_strings: &[&str] = &[
+    ///     "pl-Latn-PL",
+    ///     "und",
+    ///     "und-Adlm",
+    ///     "und-GB",
+    ///     "und-ZA",
+    ///     "und-fonipa",
+    ///     "zh",
     /// ];
     ///
     /// for ab in bcp47_strings.windows(2) {
     ///     let a = ab[0];
     ///     let b = ab[1];
     ///     assert!(a.cmp(b) == Ordering::Less);
-    ///     let a_langid = LanguageIdentifier::from_bytes(a).unwrap();
-    ///     assert!(a_langid.cmp_bytes(b) == Ordering::Less);
+    ///     let a_langid = a.parse::<LanguageIdentifier>().unwrap();
+    ///     assert_eq!(a, a_langid.to_string());
+    ///     assert!(a_langid.strict_cmp(a.as_bytes()) == Ordering::Equal);
+    ///     assert!(a_langid.strict_cmp(b.as_bytes()) == Ordering::Less);
     /// }
     /// ```
-    pub fn cmp_bytes(&self, other: &[u8]) -> Ordering {
-        let mut other_iter = other.split(|b| *b == b'-');
+    pub fn strict_cmp(&self, other: &[u8]) -> Ordering {
+        self.strict_cmp_iter(other.split(|b| *b == b'-')).end()
+    }
+
+    /// Compare this [`LanguageIdentifier`] with an iterator of BCP-47 subtags.
+    ///
+    /// This function has the same equality semantics as [`LanguageIdentifier::strict_cmp`]. It is intended as
+    /// a more modular version that allows multiple subtag iterators to be chained together.
+    ///
+    /// For an additional example, see [`SubtagOrderingResult`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use icu::locid::LanguageIdentifier;
+    /// use std::cmp::Ordering;
+    ///
+    /// let subtags: &[&[u8]] = &[&*b"ca", &*b"ES", &*b"valencia"];
+    ///
+    /// let loc = "ca-ES-valencia".parse::<LanguageIdentifier>().unwrap();
+    /// assert_eq!(
+    ///     Ordering::Equal,
+    ///     loc.strict_cmp_iter(subtags.iter().copied()).end()
+    /// );
+    ///
+    /// let loc = "ca-ES".parse::<LanguageIdentifier>().unwrap();
+    /// assert_eq!(
+    ///     Ordering::Less,
+    ///     loc.strict_cmp_iter(subtags.iter().copied()).end()
+    /// );
+    ///
+    /// let loc = "ca-ZA".parse::<LanguageIdentifier>().unwrap();
+    /// assert_eq!(
+    ///     Ordering::Greater,
+    ///     loc.strict_cmp_iter(subtags.iter().copied()).end()
+    /// );
+    /// ```
+    pub fn strict_cmp_iter<'l, I>(&self, mut subtags: I) -> SubtagOrderingResult<I>
+    where
+        I: Iterator<Item = &'l [u8]>,
+    {
         let r = self.for_each_subtag_str(&mut |subtag| {
-            if let Some(other) = other_iter.next() {
+            if let Some(other) = subtags.next() {
                 match subtag.as_bytes().cmp(other) {
                     Ordering::Equal => Ok(()),
                     not_equal => Err(not_equal),
@@ -203,13 +247,66 @@ impl LanguageIdentifier {
                 Err(Ordering::Greater)
             }
         });
-        if let Err(o) = r {
-            return o;
+        match r {
+            Ok(_) => SubtagOrderingResult::Subtags(subtags),
+            Err(o) => SubtagOrderingResult::Ordering(o),
         }
-        if other_iter.next().is_some() {
-            return Ordering::Less;
+    }
+
+    /// Compare this `LanguageIdentifier` with a potentially unnormalized BCP-47 string.
+    ///
+    /// The return value is equivalent to what would happen if you first parsed the
+    /// BCP-47 string to a `LanguageIdentifier` and then performed a structucal comparison.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use icu::locid::LanguageIdentifier;
+    /// use std::cmp::Ordering;
+    ///
+    /// let bcp47_strings: &[&str] = &[
+    ///     "pl-LaTn-pL",
+    ///     "uNd",
+    ///     "UnD-adlm",
+    ///     "uNd-GB",
+    ///     "UND-FONIPA",
+    ///     "ZH",
+    /// ];
+    ///
+    /// for a in bcp47_strings {
+    ///     assert!(a.parse::<LanguageIdentifier>().unwrap().normalizing_eq(a));
+    /// }
+    /// ```
+    pub fn normalizing_eq(&self, other: &str) -> bool {
+        macro_rules! subtag_matches {
+            ($T:ty, $iter:ident, $expected:expr) => {
+                $iter
+                    .next()
+                    .map(|b| <$T>::from_bytes(b) == Ok($expected))
+                    .unwrap_or(false)
+            };
         }
-        Ordering::Equal
+
+        let mut iter = get_subtag_iterator(other.as_bytes());
+        if !subtag_matches!(subtags::Language, iter, self.language) {
+            return false;
+        }
+        if let Some(ref script) = self.script {
+            if !subtag_matches!(subtags::Script, iter, *script) {
+                return false;
+            }
+        }
+        if let Some(ref region) = self.region {
+            if !subtag_matches!(subtags::Region, iter, *region) {
+                return false;
+            }
+        }
+        for variant in self.variants.iter() {
+            if !subtag_matches!(subtags::Variant, iter, *variant) {
+                return false;
+            }
+        }
+        iter.next() == None
     }
 
     pub(crate) fn for_each_subtag_str<E, F>(&self, f: &mut F) -> Result<(), E>
@@ -281,57 +378,17 @@ fn test_writeable() {
     );
 }
 
-macro_rules! subtag_matches {
-    ($T:ty, $iter:ident, $expected:expr) => {
-        $iter
-            .next()
-            .map(|b| <$T>::from_bytes(b) == Ok($expected))
-            .unwrap_or(false)
-    };
-}
-
-impl PartialEq<&str> for LanguageIdentifier {
-    fn eq(&self, other: &&str) -> bool {
-        self == *other
-    }
-}
-
-impl PartialEq<str> for LanguageIdentifier {
-    fn eq(&self, other: &str) -> bool {
-        let mut iter = get_subtag_iterator(other.as_bytes());
-        if !subtag_matches!(subtags::Language, iter, self.language) {
-            return false;
-        }
-        if let Some(ref script) = self.script {
-            if !subtag_matches!(subtags::Script, iter, *script) {
-                return false;
-            }
-        }
-        if let Some(ref region) = self.region {
-            if !subtag_matches!(subtags::Region, iter, *region) {
-                return false;
-            }
-        }
-        for variant in self.variants.iter() {
-            if !subtag_matches!(subtags::Variant, iter, *variant) {
-                return false;
-            }
-        }
-        iter.next() == None
-    }
-}
-
 /// # Examples
 ///
 /// ```
-/// use icu::locid::language;
+/// use icu::locid::subtags_language as language;
 /// use icu::locid::LanguageIdentifier;
 ///
 /// let language = language!("en");
 /// let li = LanguageIdentifier::from(language);
 ///
-/// assert_eq!(li.language, "en");
-/// assert_eq!(li, "en");
+/// assert_eq!(li.language, language);
+/// assert_eq!(li.to_string(), "en");
 /// ```
 impl From<subtags::Language> for LanguageIdentifier {
     fn from(language: subtags::Language) -> Self {
@@ -345,14 +402,14 @@ impl From<subtags::Language> for LanguageIdentifier {
 /// # Examples
 ///
 /// ```
-/// use icu::locid::script;
+/// use icu::locid::subtags_script as script;
 /// use icu::locid::LanguageIdentifier;
 ///
 /// let script = script!("latn");
 /// let li = LanguageIdentifier::from(Some(script));
 ///
-/// assert_eq!(li.script.unwrap(), "Latn");
-/// assert_eq!(li, "und-Latn");
+/// assert_eq!(li.script.unwrap(), script);
+/// assert_eq!(li.to_string(), "und-Latn");
 /// ```
 impl From<Option<subtags::Script>> for LanguageIdentifier {
     fn from(script: Option<subtags::Script>) -> Self {
@@ -366,14 +423,14 @@ impl From<Option<subtags::Script>> for LanguageIdentifier {
 /// # Examples
 ///
 /// ```
-/// use icu::locid::region;
+/// use icu::locid::subtags_region as region;
 /// use icu::locid::LanguageIdentifier;
 ///
 /// let region = region!("US");
 /// let li = LanguageIdentifier::from(Some(region));
 ///
-/// assert_eq!(li.region.unwrap(), "US");
-/// assert_eq!(li, "und-US");
+/// assert_eq!(li.region.unwrap(), region);
+/// assert_eq!(li.to_string(), "und-US");
 /// ```
 impl From<Option<subtags::Region>> for LanguageIdentifier {
     fn from(region: Option<subtags::Region>) -> Self {
@@ -384,22 +441,24 @@ impl From<Option<subtags::Region>> for LanguageIdentifier {
     }
 }
 
+/// Convert from an LSR tuple to a [`LanguageIdentifier`].
+///
 /// # Examples
 ///
 /// ```
 /// use icu::locid::LanguageIdentifier;
-/// use icu::locid::{language, region, script};
+/// use icu::locid::{subtags_language as language, subtags_region as region, subtags_script as script};
 ///
 /// let lang = language!("en");
 /// let script = script!("Latn");
 /// let region = region!("US");
 /// let li = LanguageIdentifier::from((lang, Some(script), Some(region)));
 ///
-/// assert_eq!(li.language, "en");
-/// assert_eq!(li.script.unwrap(), "Latn");
-/// assert_eq!(li.region.unwrap(), "US");
+/// assert_eq!(li.language, lang);
+/// assert_eq!(li.script.unwrap(), script);
+/// assert_eq!(li.region.unwrap(), region);
 /// assert_eq!(li.variants.len(), 0);
-/// assert_eq!(li, "en-Latn-US");
+/// assert_eq!(li.to_string(), "en-Latn-US");
 /// ```
 impl
     From<(
@@ -421,5 +480,32 @@ impl
             region: lsr.2,
             ..Default::default()
         }
+    }
+}
+
+/// Convert from a [`LanguageIdentifier`] to an LSR tuple.
+///
+/// # Examples
+///
+/// ```
+/// use icu::locid::LanguageIdentifier;
+/// use icu::locid::{subtags_language as language, subtags_region as region, subtags_script as script, langid};
+///
+/// let lid = langid!("en-Latn-US");
+/// let (lang, script, region) = (&lid).into();
+///
+/// assert_eq!(lang, language!("en"));
+/// assert_eq!(script, Some(script!("Latn")));
+/// assert_eq!(region, Some(region!("US")));
+/// ```
+impl From<&LanguageIdentifier>
+    for (
+        subtags::Language,
+        Option<subtags::Script>,
+        Option<subtags::Region>,
+    )
+{
+    fn from(langid: &LanguageIdentifier) -> Self {
+        (langid.language, langid.script, langid.region)
     }
 }

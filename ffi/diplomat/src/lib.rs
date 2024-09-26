@@ -33,9 +33,9 @@ extern crate std as rust_std;
 extern crate alloc;
 
 pub mod bidi;
-pub mod custom_writeable;
 pub mod data_struct;
 pub mod decimal;
+pub mod errors;
 pub mod fixed_decimal;
 pub mod locale;
 pub mod locale_canonicalizer;
@@ -43,7 +43,10 @@ pub mod pluralrules;
 pub mod properties_maps;
 pub mod properties_sets;
 pub mod provider;
+pub mod segmenter_grapheme;
 pub mod segmenter_line;
+pub mod segmenter_sentence;
+pub mod segmenter_word;
 
 #[cfg(target_arch = "wasm32")]
 mod wasm_glue;

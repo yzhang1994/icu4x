@@ -66,6 +66,7 @@
         clippy::exhaustive_enums
     )
 )]
+#![warn(missing_docs)]
 
 extern crate alloc;
 
@@ -74,7 +75,6 @@ pub mod format;
 mod grouper;
 pub mod options;
 pub mod provider;
-mod sign_selector;
 
 pub use error::Error as FixedDecimalFormatError;
 pub use format::FormattedFixedDecimal;

@@ -2,11 +2,32 @@
 // called LICENSE at the top level of the ICU4X source tree
 // (online at: https://github.com/unicode-org/icu4x/blob/main/LICENSE ).
 
-use icu_datagen::{Out, SourceData};
+use icu_datagen::*;
 use icu_locid::langid;
-use icu_provider_fs::export::serializers::json;
+use icu_provider::ResourceMarker;
+use icu_provider_fs::export::serializers::{json, postcard};
 use icu_testdata::{metadata, paths};
 use std::fs::File;
+
+// icuexport test data isn't complete, so we don't test these keys.
+const IGNORED_KEYS: &[&str] = &[
+    "props/alnum@1",
+    "props/blank@1",
+    "props/Comp_Ex@1",
+    "props/CWCM@1",
+    "props/Gr_Link@1",
+    "props/graph@1",
+    "props/Hyphen@1",
+    "props/nfcinert@1",
+    "props/nfdinert@1",
+    "props/nfkcinert@1",
+    "props/nfkdinert@1",
+    "props/PCM@1",
+    "props/print@1",
+    "props/segstart@1",
+    "props/Sensitive@1",
+    "props/xdigit@1",
+];
 
 fn main() {
     simple_logger::SimpleLogger::new()
@@ -16,15 +37,24 @@ fn main() {
         .unwrap();
 
     let source_data = SourceData::default()
-        .with_cldr(paths::cldr_json_root(), "full".to_string())
-        .with_uprops(paths::uprops_toml_root())
-        .with_coll(paths::coll_toml_root());
+        .with_cldr(paths::cldr_json_root(), CldrLocaleSubset::Full)
+        .unwrap()
+        .with_icuexport(paths::icuexport_toml_root())
+        .unwrap();
     let locales = metadata::load().unwrap().package_metadata.locales;
 
     let json_out = Out::Fs {
         output_path: paths::data_root().join("json"),
         serializer: Box::new(json::Serializer::pretty()),
         overwrite: true,
+        fingerprint: true,
+    };
+
+    let postcard_out = Out::Fs {
+        output_path: paths::data_root().join("postcard"),
+        serializer: Box::new(postcard::Serializer::default()),
+        overwrite: true,
+        fingerprint: true,
     };
 
     let blob_out = Out::Blob(Box::new(
@@ -39,10 +69,15 @@ fn main() {
 
     icu_datagen::datagen(
         Some(&locales),
-        &icu_datagen::get_all_keys(),
+        &icu_datagen::all_keys()
+            .into_iter()
+            .filter(|k| !IGNORED_KEYS.contains(&k.get_path()))
+            .chain(core::iter::once(
+                icu_provider::hello_world::HelloWorldV1Marker::KEY,
+            ))
+            .collect::<Vec<_>>(),
         &source_data,
-        vec![json_out, blob_out, mod_out],
-        true,
+        vec![json_out, blob_out, mod_out, postcard_out],
     )
     .unwrap();
 
@@ -53,7 +88,6 @@ fn main() {
         vec![Out::Blob(Box::new(
             File::create(paths::data_root().join("decimal-bn-en.postcard")).unwrap(),
         ))],
-        true,
     )
     .unwrap();
 }

@@ -6,6 +6,7 @@
 resolver = "2"
 members = [
     "components/calendar",
+    "components/collator",
     "components/datetime",
     "components/decimal",
     "components/icu",
@@ -13,22 +14,18 @@ members = [
     "components/list",
     "components/locale_canonicalizer",
     "components/locid",
+    "components/normalizer",
     "components/plurals",
     "components/properties",
     "experimental/bies",
     "experimental/casemapping",
     "experimental/char16trie",
-    "experimental/crabbake",
-    "experimental/crabbake/derive",
-    "experimental/collator",
-    "experimental/normalizer",
+    "utils/databake",
+    "utils/databake/derive",
     "experimental/segmenter",
-    "experimental/segmenter_lstm",
-    "experimental/tzif",
     "ffi/capi_cdylib",
     "ffi/diplomat",
     "ffi/capi_staticlib",
-    "ffi/ecma402",
     "ffi/freertos",
     "provider/adapters",
     "provider/blob",
@@ -47,6 +44,7 @@ members = [
     "utils/litemap",
     "utils/pattern",
     "utils/tinystr",
+    "utils/tzif",
     "utils/uniset",
     "utils/writeable",
     "utils/yoke",
@@ -56,13 +54,20 @@ members = [
     "utils/zerovec",
     "utils/zerovec/derive",
 ]
-exclude = ["provider/testdata/data/const"]
+exclude = [
+    # This crate uses datagen which requires downloading ZIP files during build,
+    # so we don't want to build it as part of the workspace.
+    "ffi/ecma402",
+]
 
-# Enable lto for WASM.
-# 2020-10-30: This currently doesn't work in .cargo/config:
-#   error: options `-C embed-bitcode=no` and `-C lto` are incompatible
+# LTO is needed for WASM and other size-optimized builds,
+# and it improve the performance of benchmarks
 [profile.release]
 lto = true
+
+[profile.release-opt-size]
+inherits = "release"
+opt-level = "s"
 
 # Enable debug information specifically for memory profiling.
 # https://docs.rs/dhat/0.2.1/dhat/#configuration

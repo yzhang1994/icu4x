@@ -45,7 +45,7 @@
 //! - [`CldrJsonDataProvider`] reads structured data from CLDR JSON source files and returns
 //!   structured Rust objects.
 //! - [`AnyPayloadProvider`] wraps a specific data struct and returns it.
-//! - The upcoming `crabbake` provider which reads structured data from Rust source files
+//! - The `BakedDataProvider` which encodes structured data directly in Rust source
 //!
 //! ### Type 2 Providers
 //!
@@ -191,5 +191,13 @@ pub mod prelude {
 // Also include the same symbols at the top level for selective inclusion
 pub use prelude::*;
 
-// Less important non-prelude item
+// Less important non-prelude items
 pub use crate::data_provider::RcWrap;
+pub use crate::resource::FallbackPriority;
+pub use crate::resource::ResourceKeyMetadata;
+
+// For macros
+#[doc(hidden)]
+pub mod _internal {
+    pub use icu_locid::extensions_unicode_key;
+}

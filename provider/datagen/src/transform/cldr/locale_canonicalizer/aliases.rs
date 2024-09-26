@@ -3,10 +3,9 @@
 // (online at: https://github.com/unicode-org/icu4x/blob/main/LICENSE ).
 
 use crate::transform::cldr::cldr_serde;
-use crate::transform::reader::open_reader;
 use crate::SourceData;
 use icu_locale_canonicalizer::provider::*;
-use icu_locid::{language, subtags, LanguageIdentifier};
+use icu_locid::{subtags, subtags_language as language, LanguageIdentifier};
 use icu_provider::datagen::IterableResourceProvider;
 use icu_provider::prelude::*;
 use tinystr::TinyAsciiStr;
@@ -34,20 +33,16 @@ impl ResourceProvider<AliasesV1Marker> for AliasesProvider {
             return Err(DataErrorKind::ExtraneousResourceOptions.into_error());
         }
 
-        let path = self
+        let data: &cldr_serde::aliases::Resource = self
             .source
-            .get_cldr_paths()?
-            .cldr_core()
-            .join("supplemental")
-            .join("aliases.json");
-        let data: cldr_serde::aliases::Resource = serde_json::from_reader(open_reader(&path)?)
-            .map_err(|e| DataError::from(e).with_path_context(&path))?;
-
+            .cldr()?
+            .core()
+            .read_and_parse("supplemental/aliases.json")?;
         let metadata = DataResponseMetadata::default();
         // TODO(#1109): Set metadata.data_langid correctly.
         Ok(DataResponse {
             metadata,
-            payload: Some(DataPayload::from_owned(AliasesV1::from(&data))),
+            payload: Some(DataPayload::from_owned(AliasesV1::from(data))),
         })
     }
 }
@@ -60,31 +55,27 @@ impl IterableResourceProvider<AliasesV1Marker> for AliasesProvider {
     }
 }
 
-// The size of the union of all field value sets.
-fn union_size(langid: &LanguageIdentifier) -> usize {
-    let mut size = langid.variants.len();
+// Sort rules following algorithm in Preprocessing, step 5 of Appendix C:
+//   - the size of the union of all field value sets, with largest size first
+//   - alphabetically by each field
+fn appendix_c_cmp(langid: &LanguageIdentifier) -> impl Ord {
+    let mut union_size = langid.variants.len() as i8;
     if !langid.language.is_empty() {
-        size += 1;
+        union_size += 1;
     }
     if langid.script.is_some() {
-        size += 1;
+        union_size += 1;
     }
     if langid.region.is_some() {
-        size += 1;
+        union_size += 1;
     }
-    size
-}
-
-// Sort rules by size of union of field sets and alphabeticaly
-// following rules in Preprocessing, step 5 of Appendix C.
-fn rules_cmp(a: &LanguageIdentifier, b: &LanguageIdentifier) -> std::cmp::Ordering {
-    let size_a = union_size(a);
-    let size_b = union_size(b);
-    if size_a == size_b {
-        a.cmp(b)
-    } else {
-        size_b.cmp(&size_a)
-    }
+    (
+        -union_size,
+        langid.language,
+        langid.script,
+        langid.region,
+        langid.variants.clone(),
+    )
 }
 
 impl From<&cldr_serde::aliases::Resource> for AliasesV1<'_> {
@@ -150,7 +141,9 @@ impl From<&cldr_serde::aliases::Resource> for AliasesV1<'_> {
                         (language, None, Some(region), false)
                             if language == language!("sgn")
                                 && !replacement.language.is_empty()
-                                && replacement == replacement.language.as_str() =>
+                                && replacement.script.is_none()
+                                && replacement.region.is_none()
+                                && replacement.variants.is_empty() =>
                         {
                             sgn_region.insert(&region.into(), &replacement.language);
                         }
@@ -231,11 +224,9 @@ impl From<&cldr_serde::aliases::Resource> for AliasesV1<'_> {
             }
         }
 
-        // 5. Order the set of rules by
-        //      1. the size of the union of all field value sets, with largest size first
-        //      2. and then alphabetically by field.
-        language_variants.sort_unstable_by(|a, b| rules_cmp(&a.0, &b.0));
-        language.sort_unstable_by(|a, b| rules_cmp(&a.0, &b.0));
+        // 5. Sort the non-special-cased rules
+        language_variants.sort_unstable_by_key(|(langid, _)| appendix_c_cmp(langid));
+        language.sort_unstable_by_key(|(langid, _)| appendix_c_cmp(langid));
 
         let language_variants = zerovec::VarZeroVec::Owned(
             zerovec::vecs::VarZeroVecOwned::try_from_elements(
@@ -278,24 +269,16 @@ impl From<&cldr_serde::aliases::Resource> for AliasesV1<'_> {
 }
 
 #[test]
-fn test_rules_cmp() {
-    let mut rules: Vec<LanguageIdentifier> = vec![
-        icu_locid::langid!("en-GB"),
-        icu_locid::langid!("CA"),
-        "und-hepburn-heploc".parse().unwrap(),
-        icu_locid::langid!("fr-CA"),
-    ];
+fn test_appendix_c_cmp() {
+    let en = icu_locid::langid!("en-GB");
+    let ca = icu_locid::langid!("ca");
+    let und = "und-hepburn-heploc".parse::<LanguageIdentifier>().unwrap();
+    let fr = icu_locid::langid!("fr-CA");
 
-    assert_eq!(union_size(&rules[0]), 2);
-    assert_eq!(union_size(&rules[1]), 1);
-    assert_eq!(union_size(&rules[2]), 2);
-    assert_eq!(union_size(&rules[3]), 2);
+    let mut rules = vec![&en, &ca, &und, &fr];
+    rules.sort_unstable_by_key(|&l| appendix_c_cmp(l));
 
-    rules.sort_unstable_by(rules_cmp);
-    assert_eq!(rules[0], "en-GB");
-    assert_eq!(rules[1], "fr-CA");
-    assert_eq!(rules[2], "und-hepburn-heploc");
-    assert_eq!(rules[3], "CA");
+    assert_eq!(rules, &[&en, &fr, &und, &ca]);
 }
 
 #[test]
@@ -335,11 +318,11 @@ fn test_basic() {
 
     assert_eq!(
         data.get().script.iter().next().unwrap(),
-        (&tinystr!(4, "Qaai"), &icu_locid::script!("Zinh"))
+        (&tinystr!(4, "Qaai"), &icu_locid::subtags_script!("Zinh"))
     );
 
     assert_eq!(
         data.get().region_num.get(&tinystr!(3, "768")).unwrap(),
-        &icu_locid::region!("TG")
+        &icu_locid::subtags_region!("TG")
     );
 }

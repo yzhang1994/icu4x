@@ -45,7 +45,7 @@ use crate::helpers::result_is_err_missing_resource_key;
 ///
 /// let forking_provider = ForkByKeyProvider(
 ///     DummyBufferProvider,
-///     HelloWorldProvider::new_with_placeholder_data().into_json_provider(),
+///     HelloWorldProvider.into_json_provider(),
 /// );
 ///
 /// let data_provider = forking_provider.as_deserializing();
@@ -67,18 +67,18 @@ use crate::helpers::result_is_err_missing_resource_key;
 ///
 /// ```
 /// # #[cfg(feature = "deserialize_json")] {
-/// use icu_locid::{language, locale};
+/// use icu_locid::{subtags_language as language, locale};
 /// use icu_provider::hello_world::*;
 /// use icu_provider::prelude::*;
 /// use icu_provider_adapters::filter::Filterable;
 /// use icu_provider_adapters::fork::by_key::ForkByKeyProvider;
 ///
 /// let forking_provider = ForkByKeyProvider(
-///     HelloWorldProvider::new_with_placeholder_data()
+///     HelloWorldProvider
 ///         .into_json_provider()
 ///         .filterable("Chinese")
 ///         .filter_by_langid(|langid| langid.language == language!("zh")),
-///     HelloWorldProvider::new_with_placeholder_data()
+///     HelloWorldProvider
 ///         .into_json_provider()
 ///         .filterable("German")
 ///         .filter_by_langid(|langid| langid.language == language!("de")),
@@ -196,7 +196,7 @@ where
 ///
 /// ```
 /// # #[cfg(feature = "deserialize_json")] {
-/// use icu_locid::{language, locale};
+/// use icu_locid::{subtags_language as language, locale};
 /// use icu_provider::hello_world::*;
 /// use icu_provider::prelude::*;
 /// use icu_provider_adapters::filter::Filterable;
@@ -204,11 +204,11 @@ where
 ///
 /// let forking_provider = MultiForkByKeyProvider {
 ///     providers: vec![
-///         HelloWorldProvider::new_with_placeholder_data()
+///         HelloWorldProvider
 ///             .into_json_provider()
 ///             .filterable("Chinese")
 ///             .filter_by_langid(|langid| langid.language == language!("zh")),
-///         HelloWorldProvider::new_with_placeholder_data()
+///         HelloWorldProvider
 ///             .into_json_provider()
 ///             .filterable("German")
 ///             .filter_by_langid(|langid| langid.language == language!("de")),

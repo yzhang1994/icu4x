@@ -16,8 +16,8 @@ use zerovec::ZeroVec;
 #[allow(clippy::exhaustive_structs)] // this type is stable
 #[cfg_attr(
     feature = "datagen",
-    derive(crabbake::Bakeable),
-    crabbake(path = icu_datetime::pattern::runtime),
+    derive(databake::Bake),
+    databake(path = icu_datetime::pattern::runtime),
 )]
 pub struct GenericPattern<'data> {
     pub items: ZeroVec<'data, GenericPatternItem>,
@@ -102,7 +102,7 @@ impl From<&GenericPattern<'_>> for reference::GenericPattern {
 
 impl fmt::Display for GenericPattern<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        let reference = crate::pattern::reference::GenericPattern::from(self);
+        let reference = reference::GenericPattern::from(self);
         reference.fmt(formatter)
     }
 }
@@ -111,7 +111,7 @@ impl FromStr for GenericPattern<'_> {
     type Err = PatternError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let reference = crate::pattern::reference::GenericPattern::from_str(s)?;
+        let reference = reference::GenericPattern::from_str(s)?;
         Ok(Self::from(&reference))
     }
 }

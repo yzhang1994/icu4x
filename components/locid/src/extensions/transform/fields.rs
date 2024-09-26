@@ -70,6 +70,8 @@ impl Fields {
 
     /// Empties the [`Fields`] list.
     ///
+    /// Returns the old list.
+    ///
     /// # Examples
     ///
     /// ```
@@ -85,8 +87,8 @@ impl Fields {
     ///
     /// assert_eq!(&fields.to_string(), "");
     /// ```
-    pub fn clear(&mut self) {
-        self.0.clear();
+    pub fn clear(&mut self) -> Self {
+        core::mem::take(self)
     }
 
     /// Returns `true` if the list contains a [`Value`] for the specified [`Key`].
@@ -145,12 +147,12 @@ impl Fields {
     /// ```
     /// use icu::locid::extensions::transform::Key;
     /// use icu::locid::extensions::transform::Value;
-    /// use icu::locid::transform_ext_key;
+    /// use icu::locid::extensions_transform_key as transform_key;
     /// use icu::locid::Locale;
     /// use std::str::FromStr;
     /// use std::string::ToString;
     ///
-    /// const D0_KEY: Key = transform_ext_key!("d0");
+    /// const D0_KEY: Key = transform_key!("d0");
     /// let lower = Value::from_str("lower").expect("valid extension subtag");
     /// let casefold = Value::from_str("casefold").expect("valid extension subtag");
     ///
@@ -160,7 +162,7 @@ impl Fields {
     /// let old_value = loc.extensions.transform.fields.set(D0_KEY, lower);
     ///
     /// assert_eq!(old_value, Some(casefold));
-    /// assert_eq!(loc, "en-t-hi-d0-lower");
+    /// assert_eq!(loc, "en-t-hi-d0-lower".parse().unwrap());
     /// ```
     pub fn set(&mut self, key: Key, value: Value) -> Option<Value> {
         self.0.insert(key, value)
@@ -177,10 +179,10 @@ impl Fields {
     /// let mut loc: Locale = "und-t-h0-hybrid-d0-hex-m0-xml".parse().unwrap();
     ///
     /// loc.extensions.transform.fields.retain_by_key(|k| k == "h0");
-    /// assert_eq!(loc, "und-t-h0-hybrid");
+    /// assert_eq!(loc, "und-t-h0-hybrid".parse().unwrap());
     ///
     /// loc.extensions.transform.fields.retain_by_key(|k| k == "d0");
-    /// assert_eq!(loc, "und");
+    /// assert_eq!(loc, Locale::UND);
     /// ```
     pub fn retain_by_key<F>(&mut self, mut predicate: F)
     where

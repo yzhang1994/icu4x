@@ -3,11 +3,13 @@
 // (online at: https://github.com/unicode-org/icu4x/blob/main/LICENSE ).
 
 use core::borrow::Borrow;
+use core::cmp::Ordering;
 use core::iter::FromIterator;
 use litemap::LiteMap;
 
 use super::Key;
 use super::Value;
+use crate::ordering::SubtagOrderingResult;
 
 /// A list of [`Key`]-[`Value`] pairs representing functional information
 /// about locale's internationnalization preferences.
@@ -38,21 +40,21 @@ use super::Value;
 /// Access a [`Keywords`] object from a [`Locale`]:
 ///
 /// ```
-/// use icu::locid::{unicode_ext_key, unicode_ext_value, Locale};
+/// use icu::locid::{extensions_unicode_key as key, extensions_unicode_value as value, Locale};
 ///
 /// let loc: Locale = "und-u-hc-h23-kc-true".parse().expect("Valid BCP-47");
 ///
 /// assert_eq!(
-///     loc.extensions.unicode.keywords.get(&unicode_ext_key!("ca")),
+///     loc.extensions.unicode.keywords.get(&key!("ca")),
 ///     None
 /// );
 /// assert_eq!(
-///     loc.extensions.unicode.keywords.get(&unicode_ext_key!("hc")),
-///     Some(&unicode_ext_value!("h23"))
+///     loc.extensions.unicode.keywords.get(&key!("hc")),
+///     Some(&value!("h23"))
 /// );
 /// assert_eq!(
-///     loc.extensions.unicode.keywords.get(&unicode_ext_key!("kc")),
-///     Some(&unicode_ext_value!("true"))
+///     loc.extensions.unicode.keywords.get(&key!("kc")),
+///     Some(&value!("true"))
 /// );
 ///
 /// assert_eq!(loc.extensions.unicode.keywords.to_string(), "hc-h23-kc");
@@ -182,12 +184,12 @@ impl Keywords {
     /// ```
     /// use icu::locid::extensions::unicode::Key;
     /// use icu::locid::extensions::unicode::Value;
-    /// use icu::locid::unicode_ext_key;
+    /// use icu::locid::extensions_unicode_key as key;
     /// use icu::locid::Locale;
     /// use std::str::FromStr;
     /// use std::string::ToString;
     ///
-    /// const CA_KEY: Key = unicode_ext_key!("ca");
+    /// const CA_KEY: Key = key!("ca");
     /// let japanese = Value::from_str("japanese").expect("valid extension subtag");
     /// let buddhist = Value::from_str("buddhist").expect("valid extension subtag");
     ///
@@ -197,13 +199,41 @@ impl Keywords {
     /// let old_value = loc.extensions.unicode.keywords.set(CA_KEY, japanese);
     ///
     /// assert_eq!(old_value, Some(buddhist));
-    /// assert_eq!(loc, "und-u-hello-ca-japanese-hc-h12");
+    /// assert_eq!(loc, "und-u-hello-ca-japanese-hc-h12".parse().unwrap());
     /// ```
     pub fn set(&mut self, key: Key, value: Value) -> Option<Value> {
         self.0.insert(key, value)
     }
 
+    /// Removes the specified keyword, returning the old value if it existed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use icu::locid::extensions::unicode::Key;
+    /// use icu::locid::extensions_unicode_key as key;
+    /// use icu::locid::Locale;
+    /// use std::str::FromStr;
+    ///
+    /// const CA_KEY: Key = key!("ca");
+    ///
+    /// let mut loc: Locale = "und-u-hello-ca-buddhist-hc-h12"
+    ///     .parse()
+    ///     .expect("valid BCP-47 identifier");
+    /// loc.extensions.unicode.keywords.remove(&CA_KEY);
+    /// assert_eq!(loc, "und-u-hello-hc-h12".parse().unwrap());
+    /// ```
+    pub fn remove<Q>(&mut self, key: &Q) -> Option<Value>
+    where
+        Key: Borrow<Q>,
+        Q: Ord,
+    {
+        self.0.remove(key)
+    }
+
     /// Clears all Unicode extension keywords, leaving Unicode attributes.
+    ///
+    /// Returns the old Unicode extension keywords.
     ///
     /// # Example
     ///
@@ -213,10 +243,10 @@ impl Keywords {
     ///
     /// let mut loc: Locale = "und-u-hello-ca-buddhist-hc-h12".parse().unwrap();
     /// loc.extensions.unicode.keywords.clear();
-    /// assert_eq!(loc, "und-u-hello");
+    /// assert_eq!(loc, "und-u-hello".parse().unwrap());
     /// ```
-    pub fn clear(&mut self) {
-        self.0.clear();
+    pub fn clear(&mut self) -> Self {
+        core::mem::take(self)
     }
 
     /// Retains a subset of keywords as specified by the predicate function.
@@ -230,16 +260,106 @@ impl Keywords {
     /// let mut loc: Locale = "und-u-ca-buddhist-hc-h12-ms-metric".parse().unwrap();
     ///
     /// loc.extensions.unicode.keywords.retain_by_key(|k| k == "hc");
-    /// assert_eq!(loc, "und-u-hc-h12");
+    /// assert_eq!(loc, "und-u-hc-h12".parse().unwrap());
     ///
     /// loc.extensions.unicode.keywords.retain_by_key(|k| k == "ms");
-    /// assert_eq!(loc, "und");
+    /// assert_eq!(loc, Locale::UND);
     /// ```
     pub fn retain_by_key<F>(&mut self, mut predicate: F)
     where
         F: FnMut(&Key) -> bool,
     {
         self.0.retain(|k, _| predicate(k))
+    }
+
+    /// Compare this [`Keywords`] with BCP-47 bytes.
+    ///
+    /// The return value is equivalent to what would happen if you first converted this
+    /// [`Keywords`] to a BCP-47 string and then performed a byte comparison.
+    ///
+    /// This function is case-sensitive and results in a *total order*, so it is appropriate for
+    /// binary search. The only argument producing [`Ordering::Equal`] is `self.to_string()`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use icu::locid::Locale;
+    /// use icu::locid::extensions::unicode::Keywords;
+    /// use std::cmp::Ordering;
+    ///
+    /// let bcp47_strings: &[&str] = &[
+    ///     "ca-hebrew",
+    ///     "ca-japanese",
+    ///     "ca-japanese-nu-latn",
+    ///     "nu-latn",
+    /// ];
+    ///
+    /// for ab in bcp47_strings.windows(2) {
+    ///     let a = ab[0];
+    ///     let b = ab[1];
+    ///     assert!(a.cmp(b) == Ordering::Less);
+    ///     let a_kwds = format!("und-u-{}", a).parse::<Locale>().unwrap().extensions.unicode.keywords;
+    ///     assert_eq!(a, a_kwds.to_string());
+    ///     assert!(a_kwds.strict_cmp(a.as_bytes()) == Ordering::Equal);
+    ///     assert!(a_kwds.strict_cmp(b.as_bytes()) == Ordering::Less);
+    /// }
+    /// ```
+    pub fn strict_cmp(&self, other: &[u8]) -> Ordering {
+        self.strict_cmp_iter(other.split(|b| *b == b'-')).end()
+    }
+
+    /// Compare this [`Keywords`] with an iterator of BCP-47 subtags.
+    ///
+    /// This function has the same equality semantics as [`Keywords::strict_cmp`]. It is intended as
+    /// a more modular version that allows multiple subtag iterators to be chained together.
+    ///
+    /// For an additional example, see [`SubtagOrderingResult`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use icu::locid::Locale;
+    /// use icu::locid::extensions::unicode::Keywords;
+    /// use std::cmp::Ordering;
+    ///
+    /// let subtags: &[&[u8]] = &[&*b"ca", &*b"buddhist"];
+    ///
+    /// let kwds = "und-u-ca-buddhist".parse::<Locale>().unwrap().extensions.unicode.keywords;
+    /// assert_eq!(
+    ///     Ordering::Equal,
+    ///     kwds.strict_cmp_iter(subtags.iter().copied()).end()
+    /// );
+    ///
+    /// let kwds = "und".parse::<Locale>().unwrap().extensions.unicode.keywords;
+    /// assert_eq!(
+    ///     Ordering::Less,
+    ///     kwds.strict_cmp_iter(subtags.iter().copied()).end()
+    /// );
+    ///
+    /// let kwds = "und-u-nu-latn".parse::<Locale>().unwrap().extensions.unicode.keywords;
+    /// assert_eq!(
+    ///     Ordering::Greater,
+    ///     kwds.strict_cmp_iter(subtags.iter().copied()).end()
+    /// );
+    /// ```
+    pub fn strict_cmp_iter<'l, I>(&self, mut subtags: I) -> SubtagOrderingResult<I>
+    where
+        I: Iterator<Item = &'l [u8]>,
+    {
+        let r = self.for_each_subtag_str(&mut |subtag| {
+            if let Some(other) = subtags.next() {
+                match subtag.as_bytes().cmp(other) {
+                    Ordering::Equal => Ok(()),
+                    not_equal => Err(not_equal),
+                }
+            } else {
+                Err(Ordering::Greater)
+            }
+        });
+        match r {
+            Ok(_) => SubtagOrderingResult::Subtags(subtags),
+            Err(o) => SubtagOrderingResult::Ordering(o),
+        }
     }
 
     pub(crate) fn for_each_subtag_str<E, F>(&self, f: &mut F) -> Result<(), E>

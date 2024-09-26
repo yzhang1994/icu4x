@@ -11,12 +11,16 @@ use crate::gregorian::Gregorian;
 use crate::indian::Indian;
 use crate::iso::Iso;
 use crate::japanese::Japanese;
-use crate::{types, Calendar, Date, DateDuration, DateDurationUnit};
+use crate::{types, AsCalendar, Calendar, Date, DateDuration, DateDurationUnit, DateTime, Ref};
 
-use icu_locid::extensions::unicode::Value;
-use icu_locid::{unicode_ext_key, unicode_ext_value, Locale};
+use icu_locid::{
+    extensions::unicode::Value, extensions_unicode_key as key, extensions_unicode_value as value,
+    Locale,
+};
 
 use icu_provider::prelude::*;
+
+use core::fmt;
 
 /// This is a calendar that encompasses all formattable calendars supported by this crate
 ///
@@ -33,8 +37,6 @@ pub enum AnyCalendar {
     Gregorian(Gregorian),
     Buddhist(Buddhist),
     Japanese(Japanese),
-    /// The Ethiopic calendar; the bool specifies whether dates
-    /// that this calendar produces should be in the Amete Alem era scheme
     Ethiopic(Ethiopic),
     Indian(Indian),
     Coptic(Coptic),
@@ -217,12 +219,12 @@ impl Calendar for AnyCalendar {
     }
 
     /// The calendar-specific year represented by `date`
-    fn year(&self, date: &Self::DateInner) -> types::Year {
+    fn year(&self, date: &Self::DateInner) -> types::FormattableYear {
         match_cal_and_date!(match (self, date): (c, d) => c.year(d))
     }
 
     /// The calendar-specific month represented by `date`
-    fn month(&self, date: &Self::DateInner) -> types::Month {
+    fn month(&self, date: &Self::DateInner) -> types::FormattableMonth {
         match_cal_and_date!(match (self, date): (c, d) => c.month(d))
     }
 
@@ -247,12 +249,18 @@ impl Calendar for AnyCalendar {
             Self::Iso(_) => "AnyCalendar (Iso)",
         }
     }
+
+    fn any_calendar_kind(&self) -> Option<AnyCalendarKind> {
+        Some(self.kind())
+    }
 }
 
 impl AnyCalendar {
     /// Constructs an AnyCalendar for a given calendar kind and [`AnyProvider`] data source
     ///
-    /// For calendars that need data, will attempt to load the appropriate data from the source
+    /// For calendars that need data, will attempt to load the appropriate data from the source.
+    ///
+    /// This API needs the `calendar/japanese@1` data key if working with Japanese calendars.
     pub fn try_new_with_any_provider<P>(
         kind: AnyCalendarKind,
         provider: &P,
@@ -279,7 +287,9 @@ impl AnyCalendar {
 
     /// Constructs an AnyCalendar for a given calendar kind and [`BufferProvider`] data source
     ///
-    /// For calendars that need data, will attempt to load the appropriate data from the source
+    /// For calendars that need data, will attempt to load the appropriate data from the source.
+    ///
+    /// This API needs the `calendar/japanese@1` data key if working with Japanese calendars.
     ///
     /// This needs the `"serde"` feature to be enabled to be used
     #[cfg(feature = "serde")]
@@ -312,9 +322,6 @@ impl AnyCalendar {
     /// **This method is unstable; the bounds on `P` might expand over time as more calendars are added**
     ///
     /// For calendars that need data, will attempt to load the appropriate data from the source
-    ///
-    /// This needs the `"serde"` feature to be enabled to be used
-    #[cfg(feature = "serde")]
     pub fn try_new_unstable<P>(kind: AnyCalendarKind, provider: &P) -> Result<Self, DataError>
     where
         P: ResourceProvider<crate::provider::JapaneseErasV1Marker> + ?Sized,
@@ -344,6 +351,49 @@ impl AnyCalendar {
             Self::Iso(_) => "Iso",
         }
     }
+
+    pub fn kind(&self) -> AnyCalendarKind {
+        match *self {
+            Self::Gregorian(_) => AnyCalendarKind::Gregorian,
+            Self::Buddhist(_) => AnyCalendarKind::Buddhist,
+            Self::Japanese(_) => AnyCalendarKind::Japanese,
+            #[allow(clippy::expect_used)] // Invariant known at compile time
+            Self::Ethiopic(ref e) => e
+                .any_calendar_kind()
+                .expect("Ethiopic calendar known to have an AnyCalendarKind"),
+            Self::Indian(_) => AnyCalendarKind::Indian,
+            Self::Coptic(_) => AnyCalendarKind::Coptic,
+            Self::Iso(_) => AnyCalendarKind::Iso,
+        }
+    }
+
+    /// Given an AnyCalendar date, convert that date to another AnyCalendar date in this calendar,
+    /// if conversion is needed
+    pub fn convert_any_date<'a>(
+        &'a self,
+        date: &Date<impl AsCalendar<Calendar = AnyCalendar>>,
+    ) -> Date<Ref<'a, AnyCalendar>> {
+        if self.kind() != date.calendar.as_calendar().kind() {
+            Date::new_from_iso(date.to_iso(), Ref(self))
+        } else {
+            Date {
+                inner: date.inner.clone(),
+                calendar: Ref(self),
+            }
+        }
+    }
+
+    /// Given an AnyCalendar datetime, convert that date to another AnyCalendar datetime in this calendar,
+    /// if conversion is needed
+    pub fn convert_any_datetime<'a>(
+        &'a self,
+        date: &DateTime<impl AsCalendar<Calendar = AnyCalendar>>,
+    ) -> DateTime<Ref<'a, AnyCalendar>> {
+        DateTime {
+            time: date.time,
+            date: self.convert_any_date(&date.date),
+        }
+    }
 }
 
 impl AnyDateInner {
@@ -362,7 +412,7 @@ impl AnyDateInner {
 
 /// Convenient type for selecting the kind of AnyCalendar to construct
 #[non_exhaustive]
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub enum AnyCalendarKind {
     Gregorian,
     Buddhist,
@@ -380,6 +430,7 @@ impl AnyCalendarKind {
         Some(match x {
             "gregory" => AnyCalendarKind::Gregorian,
             "buddhist" => AnyCalendarKind::Buddhist,
+            "japanese" => AnyCalendarKind::Japanese,
             "indian" => AnyCalendarKind::Indian,
             "coptic" => AnyCalendarKind::Coptic,
             "iso" => AnyCalendarKind::Iso,
@@ -390,19 +441,21 @@ impl AnyCalendarKind {
     }
 
     pub fn from_bcp47(x: &Value) -> Option<Self> {
-        Some(if *x == unicode_ext_value!("gregory") {
+        Some(if *x == value!("gregory") {
             AnyCalendarKind::Gregorian
-        } else if *x == unicode_ext_value!("buddhist") {
+        } else if *x == value!("buddhist") {
             AnyCalendarKind::Buddhist
-        } else if *x == unicode_ext_value!("indian") {
+        } else if *x == value!("japanese") {
+            AnyCalendarKind::Japanese
+        } else if *x == value!("indian") {
             AnyCalendarKind::Indian
-        } else if *x == unicode_ext_value!("coptic") {
+        } else if *x == value!("coptic") {
             AnyCalendarKind::Coptic
-        } else if *x == unicode_ext_value!("iso") {
+        } else if *x == value!("iso") {
             AnyCalendarKind::Iso
-        } else if *x == unicode_ext_value!("ethiopic") {
+        } else if *x == value!("ethiopic") {
             AnyCalendarKind::Ethiopic
-        } else if *x == unicode_ext_value!("ethioaa") {
+        } else if *x == value!("ethioaa") {
             AnyCalendarKind::Ethioaa
         } else {
             return None;
@@ -426,8 +479,14 @@ impl AnyCalendarKind {
         l.extensions
             .unicode
             .keywords
-            .get(&unicode_ext_key!("ca"))
+            .get(&key!("ca"))
             .and_then(Self::from_bcp47)
+    }
+}
+
+impl fmt::Display for AnyCalendarKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
     }
 }
 
@@ -496,7 +555,7 @@ impl IncludedInAnyCalendar for Ethiopic {
         AnyCalendar::Ethiopic(self)
     }
     fn to_any_cloned(&self) -> AnyCalendar {
-        AnyCalendar::Ethiopic(Ethiopic::new())
+        AnyCalendar::Ethiopic(*self)
     }
     fn date_to_any(d: &Self::DateInner) -> AnyDateInner {
         AnyDateInner::Ethiopic(*d)

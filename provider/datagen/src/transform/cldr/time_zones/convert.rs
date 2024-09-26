@@ -2,14 +2,20 @@
 // called LICENSE at the top level of the ICU4X source tree
 // (online at: https://github.com/unicode-org/icu4x/blob/main/LICENSE ).
 
+use icu_calendar::DateTime;
 use icu_datetime::provider::time_zones::{
     ExemplarCitiesV1, MetaZoneGenericNamesLongV1, MetaZoneGenericNamesShortV1, MetaZoneId,
-    MetaZoneSpecificNamesLongV1, MetaZoneSpecificNamesShortV1, TimeZoneBcp47Id, TimeZoneFormatsV1,
+    MetaZonePeriodV1, MetaZoneSpecificNamesLongV1, MetaZoneSpecificNamesShortV1, TimeZoneBcp47Id,
+    TimeZoneFormatsV1,
 };
 use std::borrow::Cow;
+use std::collections::HashMap;
 use tinystr::TinyStr8;
 use zerovec::{ZeroMap, ZeroMap2d};
 
+use crate::transform::cldr::cldr_serde::time_zones::meta_zones::{
+    MetaLocationOrSubRegion, MetaZoneForPeriod, ZonePeriod,
+};
 use crate::transform::cldr::cldr_serde::{
     time_zones::time_zone_names::*, time_zones::CldrTimeZonesData,
 };
@@ -37,7 +43,7 @@ fn parse_hour_format(hour_format: &str) -> (Cow<'static, str>, Cow<'static, str>
     (Cow::Owned(positive), Cow::Owned(negative))
 }
 
-impl From<&CldrTimeZonesData<'_>> for TimeZoneFormatsV1<'static> {
+impl From<&CldrTimeZonesData> for TimeZoneFormatsV1<'static> {
     fn from(other: &CldrTimeZonesData) -> Self {
         let data = &other.time_zone_names;
         Self {
@@ -89,7 +95,7 @@ impl Location {
     }
 }
 
-impl From<&CldrTimeZonesData<'_>> for ExemplarCitiesV1<'static> {
+impl From<&CldrTimeZonesData> for ExemplarCitiesV1<'static> {
     fn from(other: &CldrTimeZonesData) -> Self {
         let time_zone_names_data = &other.time_zone_names;
         let bcp47_tzid_data = &other.bcp47_tzids;
@@ -138,9 +144,73 @@ impl From<&CldrTimeZonesData<'_>> for ExemplarCitiesV1<'static> {
     }
 }
 
+impl From<&CldrTimeZonesData> for MetaZonePeriodV1<'static> {
+    fn from(other: &CldrTimeZonesData) -> Self {
+        let data = &other.meta_zone_periods;
+        let bcp47_tzid_data = &other.bcp47_tzids;
+        let meta_zone_id_data = &other.meta_zone_ids;
+        Self(
+            data.iter()
+                .flat_map(|(key, zone)| {
+                    let key = key;
+                    match zone {
+                        ZonePeriod::Region(periods) => match bcp47_tzid_data.get(key) {
+                            Some(bcp47) => {
+                                vec![(*bcp47, periods.clone(), meta_zone_id_data.clone())]
+                            }
+                            None => panic!("Cannot find bcp47 for {:?}.", key),
+                        },
+                        ZonePeriod::LocationOrSubRegion(place) => place
+                            .iter()
+                            .flat_map(move |(inner_key, location_or_subregion)| {
+                                let mut key = key.clone();
+                                key.push('/');
+                                key.push_str(inner_key);
+                                match location_or_subregion {
+                                    MetaLocationOrSubRegion::Location(periods) => {
+                                        match bcp47_tzid_data.get(&key) {
+                                            Some(bcp47) => {
+                                                vec![(
+                                                    *bcp47,
+                                                    periods.clone(),
+                                                    meta_zone_id_data.clone(),
+                                                )]
+                                            }
+                                            None => panic!("Cannot find bcp47 for {:?}.", key),
+                                        }
+                                    }
+                                    MetaLocationOrSubRegion::SubRegion(subregion) => subregion
+                                        .iter()
+                                        .flat_map(move |(inner_inner_key, periods)| {
+                                            let mut key = key.clone();
+                                            key.push('/');
+                                            key.push_str(inner_inner_key);
+                                            match bcp47_tzid_data.get(&key) {
+                                                Some(bcp47) => {
+                                                    vec![(
+                                                        *bcp47,
+                                                        periods.clone(),
+                                                        meta_zone_id_data.clone(),
+                                                    )]
+                                                }
+                                                None => panic!("Cannot find bcp47 for {:?}.", key),
+                                            }
+                                        })
+                                        .collect::<Vec<_>>(),
+                                }
+                            })
+                            .collect::<Vec<_>>(),
+                    }
+                })
+                .flat_map(metazone_periods_iter)
+                .collect(),
+        )
+    }
+}
+
 macro_rules! long_short_impls {
     ($generic:ty, $specific:ty, $field:ident, $metazones_name:ident) => {
-        impl From<&CldrTimeZonesData<'_>> for $generic {
+        impl From<&CldrTimeZonesData> for $generic {
             fn from(other: &CldrTimeZonesData) -> Self {
                 let data = &other.time_zone_names;
                 let bcp47_tzid_data = &other.bcp47_tzids;
@@ -227,7 +297,7 @@ macro_rules! long_short_impls {
             }
         }
 
-        impl From<&CldrTimeZonesData<'_>> for $specific {
+        impl From<&CldrTimeZonesData> for $specific {
             fn from(other: &CldrTimeZonesData) -> Self {
                 let data = &other.time_zone_names;
                 let bcp47_tzid_data = &other.bcp47_tzids;
@@ -335,8 +405,7 @@ fn iterate_zone_format_for_meta_zone_id(
     pair: (MetaZoneId, ZoneFormat),
 ) -> impl Iterator<Item = (MetaZoneId, TinyStr8, String)> {
     let (key1, zf) = pair;
-    zf.0.into_tuple_vec()
-        .into_iter()
+    zf.0.into_iter()
         .filter(|(key, _)| !key.eq("generic"))
         .map(move |(key, value)| {
             (
@@ -354,8 +423,7 @@ fn iterate_zone_format_for_time_zone_id(
     pair: (TimeZoneBcp47Id, ZoneFormat),
 ) -> impl Iterator<Item = (TimeZoneBcp47Id, TinyStr8, String)> {
     let (key1, zf) = pair;
-    zf.0.into_tuple_vec()
-        .into_iter()
+    zf.0.into_iter()
         .filter(|(key, _)| !key.eq("generic"))
         .map(move |(key, value)| {
             (
@@ -366,5 +434,69 @@ fn iterate_zone_format_for_time_zone_id(
                     .expect("Time-zone variant was not compatible with TinyStr8"),
                 value,
             )
+        })
+}
+
+fn metazone_periods_iter(
+    pair: (
+        TimeZoneBcp47Id,
+        Vec<MetaZoneForPeriod>,
+        HashMap<String, MetaZoneId>,
+    ),
+) -> impl Iterator<Item = (TimeZoneBcp47Id, i32, Option<MetaZoneId>)> {
+    let (time_zone_key, periods, meta_zone_id_data) = pair;
+    periods
+        .into_iter()
+        .map(move |period| match &period.uses_meta_zone.from {
+            Some(from) => {
+                // TODO(#2127): Ideally this parsing can move into a library function
+                let parts: Vec<String> = from.split(' ').map(|s| s.to_string()).collect();
+                let date = &parts[0];
+                let time = &parts[1];
+                let date_parts: Vec<String> = date.split('-').map(|s| s.to_string()).collect();
+                let year = date_parts[0].parse::<i32>().unwrap();
+                let month = date_parts[1].parse::<u8>().unwrap();
+                let day = date_parts[2].parse::<u8>().unwrap();
+                let time_parts: Vec<String> = time.split(':').map(|s| s.to_string()).collect();
+                let hour = time_parts[0].parse::<u8>().unwrap();
+                let minute = time_parts[1].parse::<u8>().unwrap();
+                let iso = DateTime::new_iso_datetime(year, month, day, hour, minute, 0).unwrap();
+                let minutes = iso.minutes_since_local_unix_epoch();
+
+                match meta_zone_id_data.get(&period.uses_meta_zone.mzone) {
+                    Some(meta_zone_short_id) => (time_zone_key, minutes, Some(*meta_zone_short_id)),
+                    None => {
+                        // TODO(#1781): Remove this special case once the short id is updated in CLDR
+                        if &period.uses_meta_zone.mzone == "Yukon" {
+                            (
+                                time_zone_key,
+                                minutes,
+                                Some(MetaZoneId(tinystr::tinystr!(4, "yuko"))),
+                            )
+                        } else {
+                            (time_zone_key, minutes, None)
+                        }
+                    }
+                }
+            }
+            None => {
+                let iso = DateTime::new_iso_datetime(1970, 1, 1, 0, 0, 0).unwrap();
+                let minutes = iso.minutes_since_local_unix_epoch();
+                match meta_zone_id_data.get(&period.uses_meta_zone.mzone) {
+                    Some(meta_zone_short_id) => (time_zone_key, minutes, Some(*meta_zone_short_id)),
+                    None => {
+                        // TODO(#1781): Remove this special case once the short id is updated in CLDR
+                        if &period.uses_meta_zone.mzone == "Yukon" {
+                            (
+                                time_zone_key,
+                                minutes,
+                                Some(MetaZoneId(tinystr::tinystr!(4, "yuko"))),
+                            )
+                        } else {
+                            (time_zone_key, minutes, None)
+                        }
+                    }
+                }
+            }
         })
 }

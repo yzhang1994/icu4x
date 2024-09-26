@@ -8,30 +8,31 @@
 //! use icu::calendar::{indian::Indian, Date, DateTime};
 //!
 //! // `Date` type
-//! let date_iso = Date::new_iso_date_from_integers(1970, 1, 2)
+//! let date_iso = Date::new_iso_date(1970, 1, 2)
 //!     .expect("Failed to initialize ISO Date instance.");
 //! let date_indian = Date::new_from_iso(date_iso, Indian);
 //!
 //! // `DateTime` type
-//! let datetime_iso = DateTime::new_iso_datetime_from_integers(1970, 1, 2, 13, 1, 0)
+//! let datetime_iso = DateTime::new_iso_datetime(1970, 1, 2, 13, 1, 0)
 //!     .expect("Failed to initialize ISO DateTime instance.");
 //! let datetime_indian = DateTime::new_from_iso(datetime_iso, Indian);
 //!
 //! // `Date` checks
 //! assert_eq!(date_indian.year().number, 1892);
-//! assert_eq!(date_indian.month().number, 1);
+//! assert_eq!(date_indian.month().ordinal, 1);
 //! assert_eq!(date_indian.day_of_month().0, 2);
 //!
 //! // `DateTime` type
 //! assert_eq!(datetime_indian.date.year().number, 1892);
-//! assert_eq!(datetime_indian.date.month().number, 1);
+//! assert_eq!(datetime_indian.date.month().ordinal, 1);
 //! assert_eq!(datetime_indian.date.day_of_month().0, 2);
 //! assert_eq!(datetime_indian.time.hour.number(), 13);
 //! assert_eq!(datetime_indian.time.minute.number(), 1);
 //! assert_eq!(datetime_indian.time.second.number(), 0);
 //! ```
 
-use crate::iso::{Iso, IsoYear};
+use crate::any_calendar::AnyCalendarKind;
+use crate::iso::Iso;
 use crate::{
     types, ArithmeticDate, Calendar, CalendarArithmetic, Date, DateDuration, DateDurationUnit,
     DateTime, DateTimeError,
@@ -69,7 +70,7 @@ impl CalendarArithmetic for Indian {
     }
 
     fn is_leap_year(year: i32) -> bool {
-        Iso::is_leap_year(IsoYear(year + 78))
+        Iso::is_leap_year(year + 78)
     }
 }
 
@@ -78,7 +79,7 @@ impl Calendar for Indian {
     fn date_from_iso(&self, iso: Date<Iso>) -> IndianDateInner {
         let day_of_year = Iso::day_of_year(*iso.inner());
         IndianDateInner(ArithmeticDate::date_from_year_day(
-            iso.inner().year.0 - 78,
+            iso.inner().0.year - 78,
             day_of_year,
         ))
     }
@@ -120,19 +121,16 @@ impl Calendar for Indian {
         date1.0.until(date2.0, _largest_unit, _smallest_unit)
     }
 
-    fn year(&self, date: &Self::DateInner) -> types::Year {
-        types::Year {
+    fn year(&self, date: &Self::DateInner) -> types::FormattableYear {
+        types::FormattableYear {
             era: types::Era(tinystr!(16, "saka")),
             number: date.0.year,
-            related_iso: date.0.year + 78,
+            related_iso: None,
         }
     }
 
-    fn month(&self, date: &Self::DateInner) -> types::Month {
-        types::Month {
-            number: date.0.month.into(),
-            code: types::MonthCode(tinystr!(8, "TODO")),
-        }
+    fn month(&self, date: &Self::DateInner) -> types::FormattableMonth {
+        date.0.solar_month()
     }
 
     fn day_of_month(&self, date: &Self::DateInner) -> types::DayOfMonth {
@@ -140,15 +138,15 @@ impl Calendar for Indian {
     }
 
     fn day_of_year_info(&self, date: &Self::DateInner) -> types::DayOfYearInfo {
-        let prev_year = types::Year {
+        let prev_year = types::FormattableYear {
             era: types::Era(tinystr!(16, "saka")),
             number: date.0.year - 1,
-            related_iso: date.0.year + 77,
+            related_iso: None,
         };
-        let next_year = types::Year {
+        let next_year = types::FormattableYear {
             era: types::Era(tinystr!(16, "saka")),
             number: date.0.year + 1,
-            related_iso: date.0.year + 79,
+            related_iso: None,
         };
         types::DayOfYearInfo {
             day_of_year: date.0.day_of_year(),
@@ -161,6 +159,10 @@ impl Calendar for Indian {
 
     fn debug_name(&self) -> &'static str {
         "Indian"
+    }
+
+    fn any_calendar_kind(&self) -> Option<AnyCalendarKind> {
+        Some(AnyCalendarKind::Indian)
     }
 }
 
@@ -189,7 +191,7 @@ impl Date<Indian> {
     ///     Date::new_indian_date(1891, 10, 12).expect("Failed to initialize Indian Date instance.");
     ///
     /// assert_eq!(date_indian.year().number, 1891);
-    /// assert_eq!(date_indian.month().number, 10);
+    /// assert_eq!(date_indian.month().ordinal, 10);
     /// assert_eq!(date_indian.day_of_month().0, 12);
     /// ```
     pub fn new_indian_date(year: i32, month: u8, day: u8) -> Result<Date<Indian>, DateTimeError> {
@@ -219,7 +221,7 @@ impl DateTime<Indian> {
     ///     .expect("Failed to initialize Indian DateTime instance.");
     ///
     /// assert_eq!(datetime_indian.date.year().number, 1891);
-    /// assert_eq!(datetime_indian.date.month().number, 10);
+    /// assert_eq!(datetime_indian.date.month().ordinal, 10);
     /// assert_eq!(datetime_indian.date.day_of_month().0, 12);
     /// assert_eq!(datetime_indian.time.hour.number(), 13);
     /// assert_eq!(datetime_indian.time.minute.number(), 1);

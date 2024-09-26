@@ -2,6 +2,7 @@
 // called LICENSE at the top level of the ICU4X source tree
 // (online at: https://github.com/unicode-org/icu4x/blob/main/LICENSE ).
 
+use crate::any_calendar::AnyCalendarKind;
 use crate::{types, Date, DateDuration, DateDurationUnit, Iso};
 use core::fmt;
 
@@ -59,14 +60,20 @@ pub trait Calendar {
     // fn since(&self, from: &Date<Self>, to: &Date<Self>) -> Duration<Self>, Error;
 
     /// The calendar-specific year represented by `date`
-    fn year(&self, date: &Self::DateInner) -> types::Year;
+    fn year(&self, date: &Self::DateInner) -> types::FormattableYear;
 
     /// The calendar-specific month represented by `date`
-    fn month(&self, date: &Self::DateInner) -> types::Month;
+    fn month(&self, date: &Self::DateInner) -> types::FormattableMonth;
 
     /// The calendar-specific day-of-month represented by `date`
     fn day_of_month(&self, date: &Self::DateInner) -> types::DayOfMonth;
 
     /// Information of the day of the year
     fn day_of_year_info(&self, date: &Self::DateInner) -> types::DayOfYearInfo;
+
+    /// The [`AnyCalendarKind`] corresponding to this calendar,
+    /// if one exists. Implementors outside of icu_calendar should return None
+    fn any_calendar_kind(&self) -> Option<AnyCalendarKind> {
+        None
+    }
 }

@@ -32,21 +32,21 @@ export class ICU4XBidi {
         })();
         return ok_value;
       } else {
-        const throw_value = {};
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
         throw new diplomatRuntime.FFIError(throw_value);
       }
     })();
     return diplomat_out;
   }
 
-  for_text(text) {
+  for_text(text, default_level) {
     let text_diplomat_bytes = (new TextEncoder()).encode(text);
     let text_diplomat_ptr = wasm.diplomat_alloc(text_diplomat_bytes.length, 1);
     let text_diplomat_buf = new Uint8Array(wasm.memory.buffer, text_diplomat_ptr, text_diplomat_bytes.length);
     text_diplomat_buf.set(text_diplomat_bytes, 0);
     const diplomat_out = (() => {
       const out = (() => {
-        const out = new ICU4XBidiInfo(wasm.ICU4XBidi_for_text(this.underlying, text_diplomat_ptr, text_diplomat_bytes.length));
+        const out = new ICU4XBidiInfo(wasm.ICU4XBidi_for_text(this.underlying, text_diplomat_ptr, text_diplomat_bytes.length, default_level));
         out.owner = null;
         return out;
       })();
@@ -54,6 +54,26 @@ export class ICU4XBidi {
       return out;
     })();
     wasm.diplomat_free(text_diplomat_ptr, text_diplomat_bytes.length, 1);
+    return diplomat_out;
+  }
+
+  static level_is_rtl(level) {
+    const diplomat_out = wasm.ICU4XBidi_level_is_rtl(level);
+    return diplomat_out;
+  }
+
+  static level_is_ltr(level) {
+    const diplomat_out = wasm.ICU4XBidi_level_is_ltr(level);
+    return diplomat_out;
+  }
+
+  static level_rtl() {
+    const diplomat_out = wasm.ICU4XBidi_level_rtl();
+    return diplomat_out;
+  }
+
+  static level_ltr() {
+    const diplomat_out = wasm.ICU4XBidi_level_ltr();
     return diplomat_out;
   }
 }
@@ -103,6 +123,16 @@ export class ICU4XBidiInfo {
     })();
     return diplomat_out;
   }
+
+  size() {
+    const diplomat_out = wasm.ICU4XBidiInfo_size(this.underlying);
+    return diplomat_out;
+  }
+
+  level_at(pos) {
+    const diplomat_out = wasm.ICU4XBidiInfo_level_at(this.underlying, pos);
+    return diplomat_out;
+  }
 }
 
 const ICU4XBidiParagraph_box_destroy_registry = new FinalizationRegistry(underlying => {
@@ -116,9 +146,21 @@ export class ICU4XBidiParagraph {
 
   set_paragraph_in_text(n) {
     const diplomat_out = (() => {
-      const is_ok = wasm.ICU4XBidiParagraph_set_paragraph_in_text(this.underlying, n) == 1;
-      if (!is_ok) {
-        throw new diplomatRuntime.FFIError({});
+      const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
+      const result_tag = {};
+      diplomat_alloc_destroy_registry.register(result_tag, {
+        ptr: diplomat_receive_buffer,
+        size: 5,
+        align: 4,
+      });
+      wasm.ICU4XBidiParagraph_set_paragraph_in_text(diplomat_receive_buffer, this.underlying, n);
+      const is_ok = (new Uint8Array(wasm.memory.buffer, diplomat_receive_buffer + 4, 1))[0] == 1;
+      if (is_ok) {
+        const ok_value = {};
+        return ok_value;
+      } else {
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+        throw new diplomatRuntime.FFIError(throw_value);
       }
     })();
     return diplomat_out;
@@ -147,9 +189,21 @@ export class ICU4XBidiParagraph {
   reorder_line(range_start, range_end) {
     const diplomat_out = diplomatRuntime.withWriteable(wasm, (writeable) => {
       return (() => {
-        const is_ok = wasm.ICU4XBidiParagraph_reorder_line(this.underlying, range_start, range_end, writeable) == 1;
-        if (!is_ok) {
-          throw new diplomatRuntime.FFIError({});
+        const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
+        const result_tag = {};
+        diplomat_alloc_destroy_registry.register(result_tag, {
+          ptr: diplomat_receive_buffer,
+          size: 5,
+          align: 4,
+        });
+        wasm.ICU4XBidiParagraph_reorder_line(diplomat_receive_buffer, this.underlying, range_start, range_end, writeable);
+        const is_ok = (new Uint8Array(wasm.memory.buffer, diplomat_receive_buffer + 4, 1))[0] == 1;
+        if (is_ok) {
+          const ok_value = {};
+          return ok_value;
+        } else {
+          const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+          throw new diplomatRuntime.FFIError(throw_value);
         }
       })();
     });
@@ -158,16 +212,6 @@ export class ICU4XBidiParagraph {
 
   level_at(pos) {
     const diplomat_out = wasm.ICU4XBidiParagraph_level_at(this.underlying, pos);
-    return diplomat_out;
-  }
-
-  static level_is_rtl(level) {
-    const diplomat_out = wasm.ICU4XBidiParagraph_level_is_rtl(level);
-    return diplomat_out;
-  }
-
-  static level_is_ltr(level) {
-    const diplomat_out = wasm.ICU4XBidiParagraph_level_is_ltr(level);
     return diplomat_out;
   }
 }
@@ -193,21 +237,25 @@ export class ICU4XCodePointMapData16 {
   static try_get_script(provider) {
     const diplomat_out = (() => {
       const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
-      wasm.ICU4XCodePointMapData16_try_get_script(diplomat_receive_buffer, provider.underlying);
-      const out = new ICU4XCodePointMapData16Response(diplomat_receive_buffer);
-      if (out.data.underlying !== 0) {
-        const out_data_value = out.data;
-        ICU4XCodePointMapData16_box_destroy_registry.register(out_data_value, out_data_value.underlying);
-        Object.defineProperty(out, "data", { value: out_data_value });
-      } else {
-        Object.defineProperty(out, "data", { value: null });
-      }
-      diplomat_alloc_destroy_registry.register(out, {
-        ptr: out.underlying,
+      const result_tag = {};
+      diplomat_alloc_destroy_registry.register(result_tag, {
+        ptr: diplomat_receive_buffer,
         size: 5,
         align: 4,
       });
-      return out;
+      wasm.ICU4XCodePointMapData16_try_get_script(diplomat_receive_buffer, provider.underlying);
+      const is_ok = (new Uint8Array(wasm.memory.buffer, diplomat_receive_buffer + 4, 1))[0] == 1;
+      if (is_ok) {
+        const ok_value = (() => {
+          const out = new ICU4XCodePointMapData16((new Uint32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]);
+          out.owner = result_tag;
+          return out;
+        })();
+        return ok_value;
+      } else {
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+        throw new diplomatRuntime.FFIError(throw_value);
+      }
     })();
     return diplomat_out;
   }
@@ -252,21 +300,25 @@ export class ICU4XCodePointSetData {
   static try_get_ascii_hex_digit(provider) {
     const diplomat_out = (() => {
       const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
-      wasm.ICU4XCodePointSetData_try_get_ascii_hex_digit(diplomat_receive_buffer, provider.underlying);
-      const out = new ICU4XCodePointSetDataResult(diplomat_receive_buffer);
-      if (out.data.underlying !== 0) {
-        const out_data_value = out.data;
-        ICU4XCodePointSetData_box_destroy_registry.register(out_data_value, out_data_value.underlying);
-        Object.defineProperty(out, "data", { value: out_data_value });
-      } else {
-        Object.defineProperty(out, "data", { value: null });
-      }
-      diplomat_alloc_destroy_registry.register(out, {
-        ptr: out.underlying,
+      const result_tag = {};
+      diplomat_alloc_destroy_registry.register(result_tag, {
+        ptr: diplomat_receive_buffer,
         size: 5,
         align: 4,
       });
-      return out;
+      wasm.ICU4XCodePointSetData_try_get_ascii_hex_digit(diplomat_receive_buffer, provider.underlying);
+      const is_ok = (new Uint8Array(wasm.memory.buffer, diplomat_receive_buffer + 4, 1))[0] == 1;
+      if (is_ok) {
+        const ok_value = (() => {
+          const out = new ICU4XCodePointSetData((new Uint32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]);
+          out.owner = result_tag;
+          return out;
+        })();
+        return ok_value;
+      } else {
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+        throw new diplomatRuntime.FFIError(throw_value);
+      }
     })();
     return diplomat_out;
   }
@@ -274,28 +326,6 @@ export class ICU4XCodePointSetData {
   contains(cp) {
     const diplomat_out = wasm.ICU4XCodePointSetData_contains(this.underlying, diplomatRuntime.extractCodePoint(cp, 'cp'));
     return diplomat_out;
-  }
-}
-
-const ICU4XCodePointSetDataResult_box_destroy_registry = new FinalizationRegistry(underlying => {
-  wasm.ICU4XCodePointSetDataResult_destroy(underlying);
-});
-
-export class ICU4XCodePointSetDataResult {
-  constructor(underlying) {
-    this.underlying = underlying;
-  }
-
-  get data() {
-    return (() => {
-      const out = new ICU4XCodePointSetData((new Uint32Array(wasm.memory.buffer, this.underlying + 0, 1))[0]);
-      out.owner = null;
-      return out;
-    })();
-  }
-
-  get success() {
-    return (new Uint8Array(wasm.memory.buffer, this.underlying + 4, 1))[0] == 1;
   }
 }
 
@@ -311,72 +341,6 @@ export class ICU4XCreateDataProviderResult {
   get provider() {
     return (() => {
       const out = new ICU4XDataProvider((new Uint32Array(wasm.memory.buffer, this.underlying + 0, 1))[0]);
-      out.owner = null;
-      return out;
-    })();
-  }
-
-  get success() {
-    return (new Uint8Array(wasm.memory.buffer, this.underlying + 4, 1))[0] == 1;
-  }
-}
-
-const ICU4XCreateFixedDecimalResult_box_destroy_registry = new FinalizationRegistry(underlying => {
-  wasm.ICU4XCreateFixedDecimalResult_destroy(underlying);
-});
-
-export class ICU4XCreateFixedDecimalResult {
-  constructor(underlying) {
-    this.underlying = underlying;
-  }
-
-  get fd() {
-    return (() => {
-      const out = new ICU4XFixedDecimal((new Uint32Array(wasm.memory.buffer, this.underlying + 0, 1))[0]);
-      out.owner = null;
-      return out;
-    })();
-  }
-
-  get success() {
-    return (new Uint8Array(wasm.memory.buffer, this.underlying + 4, 1))[0] == 1;
-  }
-}
-
-const ICU4XCreatePluralOperandsResult_box_destroy_registry = new FinalizationRegistry(underlying => {
-  wasm.ICU4XCreatePluralOperandsResult_destroy(underlying);
-});
-
-export class ICU4XCreatePluralOperandsResult {
-  constructor(underlying) {
-    this.underlying = underlying;
-  }
-
-  get operands() {
-    return (() => {
-      const out = new ICU4XPluralOperands(this.underlying + 0);
-      out.owner = null;
-      return out;
-    })();
-  }
-
-  get success() {
-    return (new Uint8Array(wasm.memory.buffer, this.underlying + 36, 1))[0] == 1;
-  }
-}
-
-const ICU4XCreatePluralRulesResult_box_destroy_registry = new FinalizationRegistry(underlying => {
-  wasm.ICU4XCreatePluralRulesResult_destroy(underlying);
-});
-
-export class ICU4XCreatePluralRulesResult {
-  constructor(underlying) {
-    this.underlying = underlying;
-  }
-
-  get rules() {
-    return (() => {
-      const out = new ICU4XPluralRules((new Uint32Array(wasm.memory.buffer, this.underlying + 0, 1))[0]);
       out.owner = null;
       return out;
     })();
@@ -403,21 +367,25 @@ export class ICU4XDataProvider {
     path_diplomat_buf.set(path_diplomat_bytes, 0);
     const diplomat_out = (() => {
       const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
-      wasm.ICU4XDataProvider_create_fs(diplomat_receive_buffer, path_diplomat_ptr, path_diplomat_bytes.length);
-      const out = new ICU4XCreateDataProviderResult(diplomat_receive_buffer);
-      if (out.provider.underlying !== 0) {
-        const out_provider_value = out.provider;
-        ICU4XDataProvider_box_destroy_registry.register(out_provider_value, out_provider_value.underlying);
-        Object.defineProperty(out, "provider", { value: out_provider_value });
-      } else {
-        Object.defineProperty(out, "provider", { value: null });
-      }
-      diplomat_alloc_destroy_registry.register(out, {
-        ptr: out.underlying,
+      const result_tag = {};
+      diplomat_alloc_destroy_registry.register(result_tag, {
+        ptr: diplomat_receive_buffer,
         size: 5,
         align: 4,
       });
-      return out;
+      wasm.ICU4XDataProvider_create_fs(diplomat_receive_buffer, path_diplomat_ptr, path_diplomat_bytes.length);
+      const is_ok = (new Uint8Array(wasm.memory.buffer, diplomat_receive_buffer + 4, 1))[0] == 1;
+      if (is_ok) {
+        const ok_value = (() => {
+          const out = new ICU4XDataProvider((new Uint32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]);
+          out.owner = result_tag;
+          return out;
+        })();
+        return ok_value;
+      } else {
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+        throw new diplomatRuntime.FFIError(throw_value);
+      }
     })();
     wasm.diplomat_free(path_diplomat_ptr, path_diplomat_bytes.length, 1);
     return diplomat_out;
@@ -425,21 +393,12 @@ export class ICU4XDataProvider {
 
   static create_test() {
     const diplomat_out = (() => {
-      const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
-      wasm.ICU4XDataProvider_create_test(diplomat_receive_buffer);
-      const out = new ICU4XCreateDataProviderResult(diplomat_receive_buffer);
-      if (out.provider.underlying !== 0) {
-        const out_provider_value = out.provider;
-        ICU4XDataProvider_box_destroy_registry.register(out_provider_value, out_provider_value.underlying);
-        Object.defineProperty(out, "provider", { value: out_provider_value });
-      } else {
-        Object.defineProperty(out, "provider", { value: null });
-      }
-      diplomat_alloc_destroy_registry.register(out, {
-        ptr: out.underlying,
-        size: 5,
-        align: 4,
-      });
+      const out = (() => {
+        const out = new ICU4XDataProvider(wasm.ICU4XDataProvider_create_test());
+        out.owner = null;
+        return out;
+      })();
+      ICU4XDataProvider_box_destroy_registry.register(out, out.underlying)
       return out;
     })();
     return diplomat_out;
@@ -452,21 +411,25 @@ export class ICU4XDataProvider {
     blob_diplomat_buf.set(blob_diplomat_bytes, 0);
     const diplomat_out = (() => {
       const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
-      wasm.ICU4XDataProvider_create_from_byte_slice(diplomat_receive_buffer, blob_diplomat_ptr, blob_diplomat_bytes.length);
-      const out = new ICU4XCreateDataProviderResult(diplomat_receive_buffer);
-      if (out.provider.underlying !== 0) {
-        const out_provider_value = out.provider;
-        ICU4XDataProvider_box_destroy_registry.register(out_provider_value, out_provider_value.underlying);
-        Object.defineProperty(out, "provider", { value: out_provider_value });
-      } else {
-        Object.defineProperty(out, "provider", { value: null });
-      }
-      diplomat_alloc_destroy_registry.register(out, {
-        ptr: out.underlying,
+      const result_tag = {};
+      diplomat_alloc_destroy_registry.register(result_tag, {
+        ptr: diplomat_receive_buffer,
         size: 5,
         align: 4,
       });
-      return out;
+      wasm.ICU4XDataProvider_create_from_byte_slice(diplomat_receive_buffer, blob_diplomat_ptr, blob_diplomat_bytes.length);
+      const is_ok = (new Uint8Array(wasm.memory.buffer, diplomat_receive_buffer + 4, 1))[0] == 1;
+      if (is_ok) {
+        const ok_value = (() => {
+          const out = new ICU4XDataProvider((new Uint32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]);
+          out.owner = result_tag;
+          return out;
+        })();
+        return ok_value;
+      } else {
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+        throw new diplomatRuntime.FFIError(throw_value);
+      }
     })();
     wasm.diplomat_free(blob_diplomat_ptr, blob_diplomat_bytes.length, 1);
     return diplomat_out;
@@ -474,21 +437,12 @@ export class ICU4XDataProvider {
 
   static create_empty() {
     const diplomat_out = (() => {
-      const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
-      wasm.ICU4XDataProvider_create_empty(diplomat_receive_buffer);
-      const out = new ICU4XCreateDataProviderResult(diplomat_receive_buffer);
-      if (out.provider.underlying !== 0) {
-        const out_provider_value = out.provider;
-        ICU4XDataProvider_box_destroy_registry.register(out_provider_value, out_provider_value.underlying);
-        Object.defineProperty(out, "provider", { value: out_provider_value });
-      } else {
-        Object.defineProperty(out, "provider", { value: null });
-      }
-      diplomat_alloc_destroy_registry.register(out, {
-        ptr: out.underlying,
-        size: 5,
-        align: 4,
-      });
+      const out = (() => {
+        const out = new ICU4XDataProvider(wasm.ICU4XDataProvider_create_empty());
+        out.owner = null;
+        return out;
+      })();
+      ICU4XDataProvider_box_destroy_registry.register(out, out.underlying)
       return out;
     })();
     return diplomat_out;
@@ -551,7 +505,7 @@ export class ICU4XDataStruct {
         })();
         return ok_value;
       } else {
-        const throw_value = {};
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
         throw new diplomatRuntime.FFIError(throw_value);
       }
     })();
@@ -565,6 +519,61 @@ export class ICU4XDataStruct {
     return diplomat_out;
   }
 }
+
+const ICU4XError_js_to_rust = {
+  "UnknownError": 0,
+  "WriteableError": 1,
+  "OutOfBoundsError": 2,
+  "DataMissingResourceKeyError": 256,
+  "DataMissingVariantError": 257,
+  "DataMissingLocaleError": 258,
+  "DataMissingResourceOptionsError": 259,
+  "DataNeedsVariantError": 260,
+  "DataNeedsLocaleError": 261,
+  "DataExtraneousResourceOptionsError": 262,
+  "DataFilteredResourceError": 263,
+  "DataMismatchedTypeError": 264,
+  "DataMissingPayloadError": 265,
+  "DataInvalidStateError": 266,
+  "DataCustomError": 267,
+  "DataIoError": 268,
+  "DataUnavailableBufferFormatError": 269,
+  "LocaleUndefinedSubtagError": 512,
+  "LocaleParserError": 513,
+  "DataStructValidityError": 768,
+  "PropertyUnknownScriptIdError": 1024,
+  "PropertyUnknownGeneralCategoryGroupError": 1025,
+  "DecimalLimitError": 1280,
+  "DecimalSyntaxError": 1281,
+  "PluralParserError": 1536,
+};
+const ICU4XError_rust_to_js = {
+  0: "UnknownError",
+  1: "WriteableError",
+  2: "OutOfBoundsError",
+  256: "DataMissingResourceKeyError",
+  257: "DataMissingVariantError",
+  258: "DataMissingLocaleError",
+  259: "DataMissingResourceOptionsError",
+  260: "DataNeedsVariantError",
+  261: "DataNeedsLocaleError",
+  262: "DataExtraneousResourceOptionsError",
+  263: "DataFilteredResourceError",
+  264: "DataMismatchedTypeError",
+  265: "DataMissingPayloadError",
+  266: "DataInvalidStateError",
+  267: "DataCustomError",
+  268: "DataIoError",
+  269: "DataUnavailableBufferFormatError",
+  512: "LocaleUndefinedSubtagError",
+  513: "LocaleParserError",
+  768: "DataStructValidityError",
+  1024: "PropertyUnknownScriptIdError",
+  1025: "PropertyUnknownGeneralCategoryGroupError",
+  1280: "DecimalLimitError",
+  1281: "DecimalSyntaxError",
+  1536: "PluralParserError",
+};
 
 const ICU4XFixedDecimal_box_destroy_registry = new FinalizationRegistry(underlying => {
   wasm.ICU4XFixedDecimal_destroy(underlying);
@@ -590,62 +599,77 @@ export class ICU4XFixedDecimal {
 
   static create_from_f64_with_max_precision(f) {
     const diplomat_out = (() => {
-      const option_value = wasm.ICU4XFixedDecimal_create_from_f64_with_max_precision(f)
-      if (option_value !== 0) {
-        const inhabited_value = (() => {
-          const out = (() => {
-            const out = new ICU4XFixedDecimal(option_value);
-            out.owner = null;
-            return out;
-          })();
-          ICU4XFixedDecimal_box_destroy_registry.register(out, out.underlying)
+      const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
+      const result_tag = {};
+      diplomat_alloc_destroy_registry.register(result_tag, {
+        ptr: diplomat_receive_buffer,
+        size: 5,
+        align: 4,
+      });
+      wasm.ICU4XFixedDecimal_create_from_f64_with_max_precision(diplomat_receive_buffer, f);
+      const is_ok = (new Uint8Array(wasm.memory.buffer, diplomat_receive_buffer + 4, 1))[0] == 1;
+      if (is_ok) {
+        const ok_value = (() => {
+          const out = new ICU4XFixedDecimal((new Uint32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]);
+          out.owner = result_tag;
           return out;
         })();
-        return inhabited_value;
+        return ok_value;
       } else {
-        return null;
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+        throw new diplomatRuntime.FFIError(throw_value);
       }
     })();
     return diplomat_out;
   }
 
-  static create_from_f64_with_lower_magnitude(f, precision, rounding_mode) {
+  static create_from_f64_with_lower_magnitude(f, precision) {
     const diplomat_out = (() => {
-      const option_value = wasm.ICU4XFixedDecimal_create_from_f64_with_lower_magnitude(f, precision, ICU4XFixedDecimalRoundingMode_js_to_rust[rounding_mode])
-      if (option_value !== 0) {
-        const inhabited_value = (() => {
-          const out = (() => {
-            const out = new ICU4XFixedDecimal(option_value);
-            out.owner = null;
-            return out;
-          })();
-          ICU4XFixedDecimal_box_destroy_registry.register(out, out.underlying)
+      const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
+      const result_tag = {};
+      diplomat_alloc_destroy_registry.register(result_tag, {
+        ptr: diplomat_receive_buffer,
+        size: 5,
+        align: 4,
+      });
+      wasm.ICU4XFixedDecimal_create_from_f64_with_lower_magnitude(diplomat_receive_buffer, f, precision);
+      const is_ok = (new Uint8Array(wasm.memory.buffer, diplomat_receive_buffer + 4, 1))[0] == 1;
+      if (is_ok) {
+        const ok_value = (() => {
+          const out = new ICU4XFixedDecimal((new Uint32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]);
+          out.owner = result_tag;
           return out;
         })();
-        return inhabited_value;
+        return ok_value;
       } else {
-        return null;
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+        throw new diplomatRuntime.FFIError(throw_value);
       }
     })();
     return diplomat_out;
   }
 
-  static create_from_f64_with_significant_digits(f, digits, rounding_mode) {
+  static create_from_f64_with_significant_digits(f, digits) {
     const diplomat_out = (() => {
-      const option_value = wasm.ICU4XFixedDecimal_create_from_f64_with_significant_digits(f, digits, ICU4XFixedDecimalRoundingMode_js_to_rust[rounding_mode])
-      if (option_value !== 0) {
-        const inhabited_value = (() => {
-          const out = (() => {
-            const out = new ICU4XFixedDecimal(option_value);
-            out.owner = null;
-            return out;
-          })();
-          ICU4XFixedDecimal_box_destroy_registry.register(out, out.underlying)
+      const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
+      const result_tag = {};
+      diplomat_alloc_destroy_registry.register(result_tag, {
+        ptr: diplomat_receive_buffer,
+        size: 5,
+        align: 4,
+      });
+      wasm.ICU4XFixedDecimal_create_from_f64_with_significant_digits(diplomat_receive_buffer, f, digits);
+      const is_ok = (new Uint8Array(wasm.memory.buffer, diplomat_receive_buffer + 4, 1))[0] == 1;
+      if (is_ok) {
+        const ok_value = (() => {
+          const out = new ICU4XFixedDecimal((new Uint32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]);
+          out.owner = result_tag;
           return out;
         })();
-        return inhabited_value;
+        return ok_value;
       } else {
-        return null;
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+        throw new diplomatRuntime.FFIError(throw_value);
       }
     })();
     return diplomat_out;
@@ -658,21 +682,25 @@ export class ICU4XFixedDecimal {
     v_diplomat_buf.set(v_diplomat_bytes, 0);
     const diplomat_out = (() => {
       const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
-      wasm.ICU4XFixedDecimal_create_fromstr(diplomat_receive_buffer, v_diplomat_ptr, v_diplomat_bytes.length);
-      const out = new ICU4XCreateFixedDecimalResult(diplomat_receive_buffer);
-      if (out.fd.underlying !== 0) {
-        const out_fd_value = out.fd;
-        ICU4XFixedDecimal_box_destroy_registry.register(out_fd_value, out_fd_value.underlying);
-        Object.defineProperty(out, "fd", { value: out_fd_value });
-      } else {
-        Object.defineProperty(out, "fd", { value: null });
-      }
-      diplomat_alloc_destroy_registry.register(out, {
-        ptr: out.underlying,
+      const result_tag = {};
+      diplomat_alloc_destroy_registry.register(result_tag, {
+        ptr: diplomat_receive_buffer,
         size: 5,
         align: 4,
       });
-      return out;
+      wasm.ICU4XFixedDecimal_create_fromstr(diplomat_receive_buffer, v_diplomat_ptr, v_diplomat_bytes.length);
+      const is_ok = (new Uint8Array(wasm.memory.buffer, diplomat_receive_buffer + 4, 1))[0] == 1;
+      if (is_ok) {
+        const ok_value = (() => {
+          const out = new ICU4XFixedDecimal((new Uint32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]);
+          out.owner = result_tag;
+          return out;
+        })();
+        return ok_value;
+      } else {
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+        throw new diplomatRuntime.FFIError(throw_value);
+      }
     })();
     wasm.diplomat_free(v_diplomat_ptr, v_diplomat_bytes.length, 1);
     return diplomat_out;
@@ -683,20 +711,20 @@ export class ICU4XFixedDecimal {
     return diplomat_out;
   }
 
-  negate() {
-    const diplomat_out = wasm.ICU4XFixedDecimal_negate(this.underlying);
+  set_sign(sign) {
+    const diplomat_out = wasm.ICU4XFixedDecimal_set_sign(this.underlying, ICU4XFixedDecimalSign_js_to_rust[sign]);
   }
 
-  pad_left(digits) {
-    const diplomat_out = wasm.ICU4XFixedDecimal_pad_left(this.underlying, digits);
+  pad_left(position) {
+    const diplomat_out = wasm.ICU4XFixedDecimal_pad_left(this.underlying, position);
   }
 
-  truncate_left(magnitude) {
-    const diplomat_out = wasm.ICU4XFixedDecimal_truncate_left(this.underlying, magnitude);
+  truncate_left(position) {
+    const diplomat_out = wasm.ICU4XFixedDecimal_truncate_left(this.underlying, position);
   }
 
-  pad_right(negative_magnitude) {
-    const diplomat_out = wasm.ICU4XFixedDecimal_pad_right(this.underlying, negative_magnitude);
+  pad_right(position) {
+    const diplomat_out = wasm.ICU4XFixedDecimal_pad_right(this.underlying, position);
   }
 
   to_string() {
@@ -716,9 +744,7 @@ export class ICU4XFixedDecimalFormat {
     this.underlying = underlying;
   }
 
-  static try_new(locale, provider, options) {
-    const diplomat_ICU4XFixedDecimalFormatOptions_extracted_grouping_strategy = options["grouping_strategy"];
-    const diplomat_ICU4XFixedDecimalFormatOptions_extracted_sign_display = options["sign_display"];
+  static try_new(locale, provider, grouping_strategy) {
     const diplomat_out = (() => {
       const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
       const result_tag = {};
@@ -727,7 +753,7 @@ export class ICU4XFixedDecimalFormat {
         size: 5,
         align: 4,
       });
-      wasm.ICU4XFixedDecimalFormat_try_new(diplomat_receive_buffer, locale.underlying, provider.underlying, ICU4XFixedDecimalGroupingStrategy_js_to_rust[diplomat_ICU4XFixedDecimalFormatOptions_extracted_grouping_strategy], ICU4XFixedDecimalSignDisplay_js_to_rust[diplomat_ICU4XFixedDecimalFormatOptions_extracted_sign_display]);
+      wasm.ICU4XFixedDecimalFormat_try_new(diplomat_receive_buffer, locale.underlying, provider.underlying, ICU4XFixedDecimalGroupingStrategy_js_to_rust[grouping_strategy]);
       const is_ok = (new Uint8Array(wasm.memory.buffer, diplomat_receive_buffer + 4, 1))[0] == 1;
       if (is_ok) {
         const ok_value = (() => {
@@ -737,16 +763,14 @@ export class ICU4XFixedDecimalFormat {
         })();
         return ok_value;
       } else {
-        const throw_value = {};
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
         throw new diplomatRuntime.FFIError(throw_value);
       }
     })();
     return diplomat_out;
   }
 
-  static try_new_from_decimal_symbols_v1(data_struct, options) {
-    const diplomat_ICU4XFixedDecimalFormatOptions_extracted_grouping_strategy = options["grouping_strategy"];
-    const diplomat_ICU4XFixedDecimalFormatOptions_extracted_sign_display = options["sign_display"];
+  static try_new_from_decimal_symbols_v1(data_struct, grouping_strategy) {
     const diplomat_out = (() => {
       const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
       const result_tag = {};
@@ -755,7 +779,7 @@ export class ICU4XFixedDecimalFormat {
         size: 5,
         align: 4,
       });
-      wasm.ICU4XFixedDecimalFormat_try_new_from_decimal_symbols_v1(diplomat_receive_buffer, data_struct.underlying, ICU4XFixedDecimalGroupingStrategy_js_to_rust[diplomat_ICU4XFixedDecimalFormatOptions_extracted_grouping_strategy], ICU4XFixedDecimalSignDisplay_js_to_rust[diplomat_ICU4XFixedDecimalFormatOptions_extracted_sign_display]);
+      wasm.ICU4XFixedDecimalFormat_try_new_from_decimal_symbols_v1(diplomat_receive_buffer, data_struct.underlying, ICU4XFixedDecimalGroupingStrategy_js_to_rust[grouping_strategy]);
       const is_ok = (new Uint8Array(wasm.memory.buffer, diplomat_receive_buffer + 4, 1))[0] == 1;
       if (is_ok) {
         const ok_value = (() => {
@@ -765,7 +789,7 @@ export class ICU4XFixedDecimalFormat {
         })();
         return ok_value;
       } else {
-        const throw_value = {};
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
         throw new diplomatRuntime.FFIError(throw_value);
       }
     })();
@@ -775,46 +799,25 @@ export class ICU4XFixedDecimalFormat {
   format(value) {
     const diplomat_out = diplomatRuntime.withWriteable(wasm, (writeable) => {
       return (() => {
-        const is_ok = wasm.ICU4XFixedDecimalFormat_format(this.underlying, value.underlying, writeable) == 1;
-        if (!is_ok) {
-          throw new diplomatRuntime.FFIError({});
+        const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
+        const result_tag = {};
+        diplomat_alloc_destroy_registry.register(result_tag, {
+          ptr: diplomat_receive_buffer,
+          size: 5,
+          align: 4,
+        });
+        wasm.ICU4XFixedDecimalFormat_format(diplomat_receive_buffer, this.underlying, value.underlying, writeable);
+        const is_ok = (new Uint8Array(wasm.memory.buffer, diplomat_receive_buffer + 4, 1))[0] == 1;
+        if (is_ok) {
+          const ok_value = {};
+          return ok_value;
+        } else {
+          const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+          throw new diplomatRuntime.FFIError(throw_value);
         }
       })();
     });
     return diplomat_out;
-  }
-}
-
-const ICU4XFixedDecimalFormatOptions_box_destroy_registry = new FinalizationRegistry(underlying => {
-  wasm.ICU4XFixedDecimalFormatOptions_destroy(underlying);
-});
-
-export class ICU4XFixedDecimalFormatOptions {
-  constructor(underlying) {
-    this.underlying = underlying;
-  }
-
-  static default() {
-    const diplomat_out = (() => {
-      const diplomat_receive_buffer = wasm.diplomat_alloc(8, 4);
-      wasm.ICU4XFixedDecimalFormatOptions_default(diplomat_receive_buffer);
-      const out = new ICU4XFixedDecimalFormatOptions(diplomat_receive_buffer);
-      diplomat_alloc_destroy_registry.register(out, {
-        ptr: out.underlying,
-        size: 8,
-        align: 4,
-      });
-      return out;
-    })();
-    return diplomat_out;
-  }
-
-  get grouping_strategy() {
-    return ICU4XFixedDecimalGroupingStrategy_rust_to_js[(new Int32Array(wasm.memory.buffer, this.underlying + 0, 1))[0]];
-  }
-
-  get sign_display() {
-    return ICU4XFixedDecimalSignDisplay_rust_to_js[(new Int32Array(wasm.memory.buffer, this.underlying + 4, 1))[0]];
   }
 }
 
@@ -831,29 +834,151 @@ const ICU4XFixedDecimalGroupingStrategy_rust_to_js = {
   3: "Min2",
 };
 
-const ICU4XFixedDecimalRoundingMode_js_to_rust = {
-  "Truncate": 0,
-  "HalfExpand": 1,
+const ICU4XFixedDecimalSign_js_to_rust = {
+  "None": 0,
+  "Negative": 1,
+  "Positive": 2,
 };
-const ICU4XFixedDecimalRoundingMode_rust_to_js = {
-  0: "Truncate",
-  1: "HalfExpand",
+const ICU4XFixedDecimalSign_rust_to_js = {
+  0: "None",
+  1: "Negative",
+  2: "Positive",
 };
 
-const ICU4XFixedDecimalSignDisplay_js_to_rust = {
-  "Auto": 0,
-  "Never": 1,
-  "Always": 2,
-  "ExceptZero": 3,
-  "Negative": 4,
-};
-const ICU4XFixedDecimalSignDisplay_rust_to_js = {
-  0: "Auto",
-  1: "Never",
-  2: "Always",
-  3: "ExceptZero",
-  4: "Negative",
-};
+const ICU4XGraphemeClusterBreakIteratorLatin1_box_destroy_registry = new FinalizationRegistry(underlying => {
+  wasm.ICU4XGraphemeClusterBreakIteratorLatin1_destroy(underlying);
+});
+
+export class ICU4XGraphemeClusterBreakIteratorLatin1 {
+  constructor(underlying) {
+    this.underlying = underlying;
+  }
+
+  next() {
+    const diplomat_out = wasm.ICU4XGraphemeClusterBreakIteratorLatin1_next(this.underlying);
+    return diplomat_out;
+  }
+}
+
+const ICU4XGraphemeClusterBreakIteratorUtf16_box_destroy_registry = new FinalizationRegistry(underlying => {
+  wasm.ICU4XGraphemeClusterBreakIteratorUtf16_destroy(underlying);
+});
+
+export class ICU4XGraphemeClusterBreakIteratorUtf16 {
+  constructor(underlying) {
+    this.underlying = underlying;
+  }
+
+  next() {
+    const diplomat_out = wasm.ICU4XGraphemeClusterBreakIteratorUtf16_next(this.underlying);
+    return diplomat_out;
+  }
+}
+
+const ICU4XGraphemeClusterBreakIteratorUtf8_box_destroy_registry = new FinalizationRegistry(underlying => {
+  wasm.ICU4XGraphemeClusterBreakIteratorUtf8_destroy(underlying);
+});
+
+export class ICU4XGraphemeClusterBreakIteratorUtf8 {
+  constructor(underlying) {
+    this.underlying = underlying;
+  }
+
+  next() {
+    const diplomat_out = wasm.ICU4XGraphemeClusterBreakIteratorUtf8_next(this.underlying);
+    return diplomat_out;
+  }
+}
+
+const ICU4XGraphemeClusterBreakSegmenter_box_destroy_registry = new FinalizationRegistry(underlying => {
+  wasm.ICU4XGraphemeClusterBreakSegmenter_destroy(underlying);
+});
+
+export class ICU4XGraphemeClusterBreakSegmenter {
+  constructor(underlying) {
+    this.underlying = underlying;
+  }
+
+  static try_new(provider) {
+    const diplomat_out = (() => {
+      const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
+      const result_tag = {};
+      diplomat_alloc_destroy_registry.register(result_tag, {
+        ptr: diplomat_receive_buffer,
+        size: 5,
+        align: 4,
+      });
+      wasm.ICU4XGraphemeClusterBreakSegmenter_try_new(diplomat_receive_buffer, provider.underlying);
+      const is_ok = (new Uint8Array(wasm.memory.buffer, diplomat_receive_buffer + 4, 1))[0] == 1;
+      if (is_ok) {
+        const ok_value = (() => {
+          const out = new ICU4XGraphemeClusterBreakSegmenter((new Uint32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]);
+          out.owner = result_tag;
+          return out;
+        })();
+        return ok_value;
+      } else {
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+        throw new diplomatRuntime.FFIError(throw_value);
+      }
+    })();
+    return diplomat_out;
+  }
+
+  segment_utf8(input) {
+    let input_diplomat_bytes = (new TextEncoder()).encode(input);
+    let input_diplomat_ptr = wasm.diplomat_alloc(input_diplomat_bytes.length, 1);
+    let input_diplomat_buf = new Uint8Array(wasm.memory.buffer, input_diplomat_ptr, input_diplomat_bytes.length);
+    input_diplomat_buf.set(input_diplomat_bytes, 0);
+    const diplomat_out = (() => {
+      const out = (() => {
+        const out = new ICU4XGraphemeClusterBreakIteratorUtf8(wasm.ICU4XGraphemeClusterBreakSegmenter_segment_utf8(this.underlying, input_diplomat_ptr, input_diplomat_bytes.length));
+        out.owner = null;
+        return out;
+      })();
+      ICU4XGraphemeClusterBreakIteratorUtf8_box_destroy_registry.register(out, out.underlying)
+      return out;
+    })();
+    wasm.diplomat_free(input_diplomat_ptr, input_diplomat_bytes.length, 1);
+    return diplomat_out;
+  }
+
+  segment_utf16(input) {
+    let input_diplomat_bytes = new Uint8Array(input);
+    let input_diplomat_ptr = wasm.diplomat_alloc(input_diplomat_bytes.length, 2);
+    let input_diplomat_buf = new Uint8Array(wasm.memory.buffer, input_diplomat_ptr, input_diplomat_bytes.length);
+    input_diplomat_buf.set(input_diplomat_bytes, 0);
+    const diplomat_out = (() => {
+      const out = (() => {
+        const out = new ICU4XGraphemeClusterBreakIteratorUtf16(wasm.ICU4XGraphemeClusterBreakSegmenter_segment_utf16(this.underlying, input_diplomat_ptr, input_diplomat_bytes.length));
+        out.owner = null;
+        return out;
+      })();
+      ICU4XGraphemeClusterBreakIteratorUtf16_box_destroy_registry.register(out, out.underlying)
+      return out;
+    })();
+    wasm.diplomat_free(input_diplomat_ptr, input_diplomat_bytes.length, 2);
+    return diplomat_out;
+  }
+
+  segment_latin1(input) {
+    let input_diplomat_bytes = new Uint8Array(input);
+    let input_diplomat_ptr = wasm.diplomat_alloc(input_diplomat_bytes.length, 1);
+    let input_diplomat_buf = new Uint8Array(wasm.memory.buffer, input_diplomat_ptr, input_diplomat_bytes.length);
+    input_diplomat_buf.set(input_diplomat_bytes, 0);
+    const diplomat_out = (() => {
+      const out = (() => {
+        const out = new ICU4XGraphemeClusterBreakIteratorLatin1(wasm.ICU4XGraphemeClusterBreakSegmenter_segment_latin1(this.underlying, input_diplomat_ptr, input_diplomat_bytes.length));
+        out.owner = null;
+        return out;
+      })();
+      ICU4XGraphemeClusterBreakIteratorLatin1_box_destroy_registry.register(out, out.underlying)
+      return out;
+    })();
+    wasm.diplomat_free(input_diplomat_ptr, input_diplomat_bytes.length, 1);
+    return diplomat_out;
+  }
+}
 
 const ICU4XLineBreakIteratorLatin1_box_destroy_registry = new FinalizationRegistry(underlying => {
   wasm.ICU4XLineBreakIteratorLatin1_destroy(underlying);
@@ -963,7 +1088,7 @@ export class ICU4XLineBreakSegmenter {
         })();
         return ok_value;
       } else {
-        const throw_value = {};
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
         throw new diplomatRuntime.FFIError(throw_value);
       }
     })();
@@ -992,7 +1117,7 @@ export class ICU4XLineBreakSegmenter {
         })();
         return ok_value;
       } else {
-        const throw_value = {};
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
         throw new diplomatRuntime.FFIError(throw_value);
       }
     })();
@@ -1157,7 +1282,7 @@ export class ICU4XLocale {
           const ok_value = {};
           return ok_value;
         } else {
-          const throw_value = ICU4XLocaleError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+          const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
           throw new diplomatRuntime.FFIError(throw_value);
         }
       })();
@@ -1185,7 +1310,7 @@ export class ICU4XLocale {
           const ok_value = {};
           return ok_value;
         } else {
-          const throw_value = ICU4XLocaleError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+          const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
           throw new diplomatRuntime.FFIError(throw_value);
         }
       })();
@@ -1210,7 +1335,7 @@ export class ICU4XLocale {
           const ok_value = {};
           return ok_value;
         } else {
-          const throw_value = ICU4XLocaleError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+          const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
           throw new diplomatRuntime.FFIError(throw_value);
         }
       })();
@@ -1237,7 +1362,7 @@ export class ICU4XLocale {
         const ok_value = {};
         return ok_value;
       } else {
-        const throw_value = ICU4XLocaleError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
         throw new diplomatRuntime.FFIError(throw_value);
       }
     })();
@@ -1261,7 +1386,7 @@ export class ICU4XLocale {
           const ok_value = {};
           return ok_value;
         } else {
-          const throw_value = ICU4XLocaleError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+          const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
           throw new diplomatRuntime.FFIError(throw_value);
         }
       })();
@@ -1288,7 +1413,7 @@ export class ICU4XLocale {
         const ok_value = {};
         return ok_value;
       } else {
-        const throw_value = ICU4XLocaleError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
         throw new diplomatRuntime.FFIError(throw_value);
       }
     })();
@@ -1312,7 +1437,7 @@ export class ICU4XLocale {
           const ok_value = {};
           return ok_value;
         } else {
-          const throw_value = ICU4XLocaleError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+          const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
           throw new diplomatRuntime.FFIError(throw_value);
         }
       })();
@@ -1339,7 +1464,7 @@ export class ICU4XLocale {
         const ok_value = {};
         return ok_value;
       } else {
-        const throw_value = ICU4XLocaleError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
         throw new diplomatRuntime.FFIError(throw_value);
       }
     })();
@@ -1363,7 +1488,7 @@ export class ICU4XLocale {
           const ok_value = {};
           return ok_value;
         } else {
-          const throw_value = ICU4XLocaleError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+          const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
           throw new diplomatRuntime.FFIError(throw_value);
         }
       })();
@@ -1383,20 +1508,25 @@ export class ICU4XLocaleCanonicalizer {
 
   static create(provider) {
     const diplomat_out = (() => {
-      const option_value = wasm.ICU4XLocaleCanonicalizer_create(provider.underlying)
-      if (option_value !== 0) {
-        const inhabited_value = (() => {
-          const out = (() => {
-            const out = new ICU4XLocaleCanonicalizer(option_value);
-            out.owner = null;
-            return out;
-          })();
-          ICU4XLocaleCanonicalizer_box_destroy_registry.register(out, out.underlying)
+      const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
+      const result_tag = {};
+      diplomat_alloc_destroy_registry.register(result_tag, {
+        ptr: diplomat_receive_buffer,
+        size: 5,
+        align: 4,
+      });
+      wasm.ICU4XLocaleCanonicalizer_create(diplomat_receive_buffer, provider.underlying);
+      const is_ok = (new Uint8Array(wasm.memory.buffer, diplomat_receive_buffer + 4, 1))[0] == 1;
+      if (is_ok) {
+        const ok_value = (() => {
+          const out = new ICU4XLocaleCanonicalizer((new Uint32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]);
+          out.owner = result_tag;
           return out;
         })();
-        return inhabited_value;
+        return ok_value;
       } else {
-        return null;
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+        throw new diplomatRuntime.FFIError(throw_value);
       }
     })();
     return diplomat_out;
@@ -1417,15 +1547,6 @@ export class ICU4XLocaleCanonicalizer {
     return diplomat_out;
   }
 }
-
-const ICU4XLocaleError_js_to_rust = {
-  "Undefined": 0,
-  "Error": 1,
-};
-const ICU4XLocaleError_rust_to_js = {
-  0: "Undefined",
-  1: "Error",
-};
 
 const ICU4XPluralCategories_box_destroy_registry = new FinalizationRegistry(underlying => {
   wasm.ICU4XPluralCategories_destroy(underlying);
@@ -1494,14 +1615,25 @@ export class ICU4XPluralOperands {
     s_diplomat_buf.set(s_diplomat_bytes, 0);
     const diplomat_out = (() => {
       const diplomat_receive_buffer = wasm.diplomat_alloc(37, 8);
-      wasm.ICU4XPluralOperands_create(diplomat_receive_buffer, s_diplomat_ptr, s_diplomat_bytes.length);
-      const out = new ICU4XCreatePluralOperandsResult(diplomat_receive_buffer);
-      diplomat_alloc_destroy_registry.register(out, {
-        ptr: out.underlying,
+      const result_tag = {};
+      diplomat_alloc_destroy_registry.register(result_tag, {
+        ptr: diplomat_receive_buffer,
         size: 37,
         align: 8,
       });
-      return out;
+      wasm.ICU4XPluralOperands_create(diplomat_receive_buffer, s_diplomat_ptr, s_diplomat_bytes.length);
+      const is_ok = (new Uint8Array(wasm.memory.buffer, diplomat_receive_buffer + 36, 1))[0] == 1;
+      if (is_ok) {
+        const ok_value = (() => {
+          const out = new ICU4XPluralOperands(diplomat_receive_buffer);
+          out.owner = result_tag;
+          return out;
+        })();
+        return ok_value;
+      } else {
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+        throw new diplomatRuntime.FFIError(throw_value);
+      }
     })();
     wasm.diplomat_free(s_diplomat_ptr, s_diplomat_bytes.length, 1);
     return diplomat_out;
@@ -1544,21 +1676,25 @@ export class ICU4XPluralRules {
   static try_new_cardinal(locale, provider) {
     const diplomat_out = (() => {
       const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
-      wasm.ICU4XPluralRules_try_new_cardinal(diplomat_receive_buffer, locale.underlying, provider.underlying);
-      const out = new ICU4XCreatePluralRulesResult(diplomat_receive_buffer);
-      if (out.rules.underlying !== 0) {
-        const out_rules_value = out.rules;
-        ICU4XPluralRules_box_destroy_registry.register(out_rules_value, out_rules_value.underlying);
-        Object.defineProperty(out, "rules", { value: out_rules_value });
-      } else {
-        Object.defineProperty(out, "rules", { value: null });
-      }
-      diplomat_alloc_destroy_registry.register(out, {
-        ptr: out.underlying,
+      const result_tag = {};
+      diplomat_alloc_destroy_registry.register(result_tag, {
+        ptr: diplomat_receive_buffer,
         size: 5,
         align: 4,
       });
-      return out;
+      wasm.ICU4XPluralRules_try_new_cardinal(diplomat_receive_buffer, locale.underlying, provider.underlying);
+      const is_ok = (new Uint8Array(wasm.memory.buffer, diplomat_receive_buffer + 4, 1))[0] == 1;
+      if (is_ok) {
+        const ok_value = (() => {
+          const out = new ICU4XPluralRules((new Uint32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]);
+          out.owner = result_tag;
+          return out;
+        })();
+        return ok_value;
+      } else {
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+        throw new diplomatRuntime.FFIError(throw_value);
+      }
     })();
     return diplomat_out;
   }
@@ -1566,21 +1702,25 @@ export class ICU4XPluralRules {
   static try_new_ordinal(locale, provider) {
     const diplomat_out = (() => {
       const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
-      wasm.ICU4XPluralRules_try_new_ordinal(diplomat_receive_buffer, locale.underlying, provider.underlying);
-      const out = new ICU4XCreatePluralRulesResult(diplomat_receive_buffer);
-      if (out.rules.underlying !== 0) {
-        const out_rules_value = out.rules;
-        ICU4XPluralRules_box_destroy_registry.register(out_rules_value, out_rules_value.underlying);
-        Object.defineProperty(out, "rules", { value: out_rules_value });
-      } else {
-        Object.defineProperty(out, "rules", { value: null });
-      }
-      diplomat_alloc_destroy_registry.register(out, {
-        ptr: out.underlying,
+      const result_tag = {};
+      diplomat_alloc_destroy_registry.register(result_tag, {
+        ptr: diplomat_receive_buffer,
         size: 5,
         align: 4,
       });
-      return out;
+      wasm.ICU4XPluralRules_try_new_ordinal(diplomat_receive_buffer, locale.underlying, provider.underlying);
+      const is_ok = (new Uint8Array(wasm.memory.buffer, diplomat_receive_buffer + 4, 1))[0] == 1;
+      if (is_ok) {
+        const ok_value = (() => {
+          const out = new ICU4XPluralRules((new Uint32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]);
+          out.owner = result_tag;
+          return out;
+        })();
+        return ok_value;
+      } else {
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+        throw new diplomatRuntime.FFIError(throw_value);
+      }
     })();
     return diplomat_out;
   }
@@ -1612,6 +1752,186 @@ export class ICU4XPluralRules {
   }
 }
 
+const ICU4XSentenceBreakIteratorLatin1_box_destroy_registry = new FinalizationRegistry(underlying => {
+  wasm.ICU4XSentenceBreakIteratorLatin1_destroy(underlying);
+});
+
+export class ICU4XSentenceBreakIteratorLatin1 {
+  constructor(underlying) {
+    this.underlying = underlying;
+  }
+
+  next() {
+    const diplomat_out = wasm.ICU4XSentenceBreakIteratorLatin1_next(this.underlying);
+    return diplomat_out;
+  }
+}
+
+const ICU4XSentenceBreakIteratorUtf16_box_destroy_registry = new FinalizationRegistry(underlying => {
+  wasm.ICU4XSentenceBreakIteratorUtf16_destroy(underlying);
+});
+
+export class ICU4XSentenceBreakIteratorUtf16 {
+  constructor(underlying) {
+    this.underlying = underlying;
+  }
+
+  next() {
+    const diplomat_out = wasm.ICU4XSentenceBreakIteratorUtf16_next(this.underlying);
+    return diplomat_out;
+  }
+}
+
+const ICU4XSentenceBreakIteratorUtf8_box_destroy_registry = new FinalizationRegistry(underlying => {
+  wasm.ICU4XSentenceBreakIteratorUtf8_destroy(underlying);
+});
+
+export class ICU4XSentenceBreakIteratorUtf8 {
+  constructor(underlying) {
+    this.underlying = underlying;
+  }
+
+  next() {
+    const diplomat_out = wasm.ICU4XSentenceBreakIteratorUtf8_next(this.underlying);
+    return diplomat_out;
+  }
+}
+
+const ICU4XSentenceBreakSegmenter_box_destroy_registry = new FinalizationRegistry(underlying => {
+  wasm.ICU4XSentenceBreakSegmenter_destroy(underlying);
+});
+
+export class ICU4XSentenceBreakSegmenter {
+  constructor(underlying) {
+    this.underlying = underlying;
+  }
+
+  static try_new(provider) {
+    const diplomat_out = (() => {
+      const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
+      const result_tag = {};
+      diplomat_alloc_destroy_registry.register(result_tag, {
+        ptr: diplomat_receive_buffer,
+        size: 5,
+        align: 4,
+      });
+      wasm.ICU4XSentenceBreakSegmenter_try_new(diplomat_receive_buffer, provider.underlying);
+      const is_ok = (new Uint8Array(wasm.memory.buffer, diplomat_receive_buffer + 4, 1))[0] == 1;
+      if (is_ok) {
+        const ok_value = (() => {
+          const out = new ICU4XSentenceBreakSegmenter((new Uint32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]);
+          out.owner = result_tag;
+          return out;
+        })();
+        return ok_value;
+      } else {
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+        throw new diplomatRuntime.FFIError(throw_value);
+      }
+    })();
+    return diplomat_out;
+  }
+
+  segment_utf8(input) {
+    let input_diplomat_bytes = (new TextEncoder()).encode(input);
+    let input_diplomat_ptr = wasm.diplomat_alloc(input_diplomat_bytes.length, 1);
+    let input_diplomat_buf = new Uint8Array(wasm.memory.buffer, input_diplomat_ptr, input_diplomat_bytes.length);
+    input_diplomat_buf.set(input_diplomat_bytes, 0);
+    const diplomat_out = (() => {
+      const out = (() => {
+        const out = new ICU4XSentenceBreakIteratorUtf8(wasm.ICU4XSentenceBreakSegmenter_segment_utf8(this.underlying, input_diplomat_ptr, input_diplomat_bytes.length));
+        out.owner = null;
+        return out;
+      })();
+      ICU4XSentenceBreakIteratorUtf8_box_destroy_registry.register(out, out.underlying)
+      return out;
+    })();
+    wasm.diplomat_free(input_diplomat_ptr, input_diplomat_bytes.length, 1);
+    return diplomat_out;
+  }
+
+  segment_utf16(input) {
+    let input_diplomat_bytes = new Uint8Array(input);
+    let input_diplomat_ptr = wasm.diplomat_alloc(input_diplomat_bytes.length, 2);
+    let input_diplomat_buf = new Uint8Array(wasm.memory.buffer, input_diplomat_ptr, input_diplomat_bytes.length);
+    input_diplomat_buf.set(input_diplomat_bytes, 0);
+    const diplomat_out = (() => {
+      const out = (() => {
+        const out = new ICU4XSentenceBreakIteratorUtf16(wasm.ICU4XSentenceBreakSegmenter_segment_utf16(this.underlying, input_diplomat_ptr, input_diplomat_bytes.length));
+        out.owner = null;
+        return out;
+      })();
+      ICU4XSentenceBreakIteratorUtf16_box_destroy_registry.register(out, out.underlying)
+      return out;
+    })();
+    wasm.diplomat_free(input_diplomat_ptr, input_diplomat_bytes.length, 2);
+    return diplomat_out;
+  }
+
+  segment_latin1(input) {
+    let input_diplomat_bytes = new Uint8Array(input);
+    let input_diplomat_ptr = wasm.diplomat_alloc(input_diplomat_bytes.length, 1);
+    let input_diplomat_buf = new Uint8Array(wasm.memory.buffer, input_diplomat_ptr, input_diplomat_bytes.length);
+    input_diplomat_buf.set(input_diplomat_bytes, 0);
+    const diplomat_out = (() => {
+      const out = (() => {
+        const out = new ICU4XSentenceBreakIteratorLatin1(wasm.ICU4XSentenceBreakSegmenter_segment_latin1(this.underlying, input_diplomat_ptr, input_diplomat_bytes.length));
+        out.owner = null;
+        return out;
+      })();
+      ICU4XSentenceBreakIteratorLatin1_box_destroy_registry.register(out, out.underlying)
+      return out;
+    })();
+    wasm.diplomat_free(input_diplomat_ptr, input_diplomat_bytes.length, 1);
+    return diplomat_out;
+  }
+}
+
+const ICU4XWordBreakIteratorLatin1_box_destroy_registry = new FinalizationRegistry(underlying => {
+  wasm.ICU4XWordBreakIteratorLatin1_destroy(underlying);
+});
+
+export class ICU4XWordBreakIteratorLatin1 {
+  constructor(underlying) {
+    this.underlying = underlying;
+  }
+
+  next() {
+    const diplomat_out = wasm.ICU4XWordBreakIteratorLatin1_next(this.underlying);
+    return diplomat_out;
+  }
+}
+
+const ICU4XWordBreakIteratorUtf16_box_destroy_registry = new FinalizationRegistry(underlying => {
+  wasm.ICU4XWordBreakIteratorUtf16_destroy(underlying);
+});
+
+export class ICU4XWordBreakIteratorUtf16 {
+  constructor(underlying) {
+    this.underlying = underlying;
+  }
+
+  next() {
+    const diplomat_out = wasm.ICU4XWordBreakIteratorUtf16_next(this.underlying);
+    return diplomat_out;
+  }
+}
+
+const ICU4XWordBreakIteratorUtf8_box_destroy_registry = new FinalizationRegistry(underlying => {
+  wasm.ICU4XWordBreakIteratorUtf8_destroy(underlying);
+});
+
+export class ICU4XWordBreakIteratorUtf8 {
+  constructor(underlying) {
+    this.underlying = underlying;
+  }
+
+  next() {
+    const diplomat_out = wasm.ICU4XWordBreakIteratorUtf8_next(this.underlying);
+    return diplomat_out;
+  }
+}
+
 const ICU4XWordBreakRule_js_to_rust = {
   "Normal": 0,
   "BreakAll": 1,
@@ -1622,3 +1942,93 @@ const ICU4XWordBreakRule_rust_to_js = {
   1: "BreakAll",
   2: "KeepAll",
 };
+
+const ICU4XWordBreakSegmenter_box_destroy_registry = new FinalizationRegistry(underlying => {
+  wasm.ICU4XWordBreakSegmenter_destroy(underlying);
+});
+
+export class ICU4XWordBreakSegmenter {
+  constructor(underlying) {
+    this.underlying = underlying;
+  }
+
+  static try_new(provider) {
+    const diplomat_out = (() => {
+      const diplomat_receive_buffer = wasm.diplomat_alloc(5, 4);
+      const result_tag = {};
+      diplomat_alloc_destroy_registry.register(result_tag, {
+        ptr: diplomat_receive_buffer,
+        size: 5,
+        align: 4,
+      });
+      wasm.ICU4XWordBreakSegmenter_try_new(diplomat_receive_buffer, provider.underlying);
+      const is_ok = (new Uint8Array(wasm.memory.buffer, diplomat_receive_buffer + 4, 1))[0] == 1;
+      if (is_ok) {
+        const ok_value = (() => {
+          const out = new ICU4XWordBreakSegmenter((new Uint32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]);
+          out.owner = result_tag;
+          return out;
+        })();
+        return ok_value;
+      } else {
+        const throw_value = ICU4XError_rust_to_js[(new Int32Array(wasm.memory.buffer, diplomat_receive_buffer, 1))[0]];
+        throw new diplomatRuntime.FFIError(throw_value);
+      }
+    })();
+    return diplomat_out;
+  }
+
+  segment_utf8(input) {
+    let input_diplomat_bytes = (new TextEncoder()).encode(input);
+    let input_diplomat_ptr = wasm.diplomat_alloc(input_diplomat_bytes.length, 1);
+    let input_diplomat_buf = new Uint8Array(wasm.memory.buffer, input_diplomat_ptr, input_diplomat_bytes.length);
+    input_diplomat_buf.set(input_diplomat_bytes, 0);
+    const diplomat_out = (() => {
+      const out = (() => {
+        const out = new ICU4XWordBreakIteratorUtf8(wasm.ICU4XWordBreakSegmenter_segment_utf8(this.underlying, input_diplomat_ptr, input_diplomat_bytes.length));
+        out.owner = null;
+        return out;
+      })();
+      ICU4XWordBreakIteratorUtf8_box_destroy_registry.register(out, out.underlying)
+      return out;
+    })();
+    wasm.diplomat_free(input_diplomat_ptr, input_diplomat_bytes.length, 1);
+    return diplomat_out;
+  }
+
+  segment_utf16(input) {
+    let input_diplomat_bytes = new Uint8Array(input);
+    let input_diplomat_ptr = wasm.diplomat_alloc(input_diplomat_bytes.length, 2);
+    let input_diplomat_buf = new Uint8Array(wasm.memory.buffer, input_diplomat_ptr, input_diplomat_bytes.length);
+    input_diplomat_buf.set(input_diplomat_bytes, 0);
+    const diplomat_out = (() => {
+      const out = (() => {
+        const out = new ICU4XWordBreakIteratorUtf16(wasm.ICU4XWordBreakSegmenter_segment_utf16(this.underlying, input_diplomat_ptr, input_diplomat_bytes.length));
+        out.owner = null;
+        return out;
+      })();
+      ICU4XWordBreakIteratorUtf16_box_destroy_registry.register(out, out.underlying)
+      return out;
+    })();
+    wasm.diplomat_free(input_diplomat_ptr, input_diplomat_bytes.length, 2);
+    return diplomat_out;
+  }
+
+  segment_latin1(input) {
+    let input_diplomat_bytes = new Uint8Array(input);
+    let input_diplomat_ptr = wasm.diplomat_alloc(input_diplomat_bytes.length, 1);
+    let input_diplomat_buf = new Uint8Array(wasm.memory.buffer, input_diplomat_ptr, input_diplomat_bytes.length);
+    input_diplomat_buf.set(input_diplomat_bytes, 0);
+    const diplomat_out = (() => {
+      const out = (() => {
+        const out = new ICU4XWordBreakIteratorLatin1(wasm.ICU4XWordBreakSegmenter_segment_latin1(this.underlying, input_diplomat_ptr, input_diplomat_bytes.length));
+        out.owner = null;
+        return out;
+      })();
+      ICU4XWordBreakIteratorLatin1_box_destroy_registry.register(out, out.underlying)
+      return out;
+    })();
+    wasm.diplomat_free(input_diplomat_ptr, input_diplomat_bytes.length, 1);
+    return diplomat_out;
+  }
+}

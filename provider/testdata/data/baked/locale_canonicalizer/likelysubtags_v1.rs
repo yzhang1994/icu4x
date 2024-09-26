@@ -1,34 +1,6 @@
 // @generated
-use icu_provider::prelude::*;
-impl ResourceProvider<::icu_locale_canonicalizer::provider::LikelySubtagsV1Marker>
-    for super::super::BakedDataProvider
-{
-    fn load_resource(
-        &self,
-        req: &DataRequest,
-    ) -> Result<DataResponse<::icu_locale_canonicalizer::provider::LikelySubtagsV1Marker>, DataError>
-    {
-        static VALUES: &[(&str, DataStruct)] = &[("und", UND)];
-        #[allow(clippy::unwrap_used)]
-        let value = VALUES
-            .binary_search_by(|(k, _)| req.options.cmp_bytes(k.as_bytes()).reverse())
-            .map(|i| VALUES.get(i).unwrap().1)
-            .map_err(|_| {
-                DataErrorKind::MissingResourceOptions.with_req(
-                    <::icu_locale_canonicalizer::provider::LikelySubtagsV1Marker>::KEY,
-                    req,
-                )
-            })?;
-        Ok(DataResponse {
-            metadata: DataResponseMetadata::default(),
-            payload: Some(DataPayload::from_owned(zerofrom::ZeroFrom::zero_from(
-                value,
-            ))),
-        })
-    }
-}
-type DataStruct =
-    &'static <::icu_locale_canonicalizer::provider::LikelySubtagsV1Marker as DataMarker>::Yokeable;
+type DataStruct = & 'static < :: icu_locale_canonicalizer :: provider :: LikelySubtagsV1Marker as :: icu_provider :: DataMarker > :: Yokeable ;
+pub static DATA: &[(&str, DataStruct)] = &[("und", UND)];
 static UND: DataStruct = &::icu_locale_canonicalizer::provider::LikelySubtagsV1 {
     language_script: unsafe {
         #[allow(unused_unsafe)]
@@ -1633,8 +1605,8 @@ static UND: DataStruct = &::icu_locale_canonicalizer::provider::LikelySubtagsV1 
         )
     },
     und: (
-        ::icu_locid::language!("en"),
-        ::icu_locid::script!("Latn"),
-        ::icu_locid::region!("US"),
+        ::icu_locid::subtags_language!("en"),
+        ::icu_locid::subtags_script!("Latn"),
+        ::icu_locid::subtags_region!("US"),
     ),
 };

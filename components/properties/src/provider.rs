@@ -13,33 +13,46 @@ use crate::script::ScriptWithExtensions;
 use icu_codepointtrie::{CodePointTrie, TrieValue};
 use icu_provider::prelude::*;
 use icu_uniset::UnicodeSet;
+use zerofrom::ZeroFrom;
 
 /// A set of characters with a particular property.
+///
+/// This data enum is extensible, more backends may be added in the future.
+/// Old data can be used with newer code but not vice versa.
 #[derive(Debug, Eq, PartialEq, Clone, yoke::Yokeable, zerofrom::ZeroFrom)]
 #[cfg_attr(
     feature = "datagen", 
-    derive(serde::Serialize, crabbake::Bakeable),
-    crabbake(path = icu_properties::provider),
+    derive(serde::Serialize, databake::Bake),
+    databake(path = icu_properties::provider),
 )]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
-pub struct UnicodePropertyV1<'data> {
+#[non_exhaustive]
+pub enum UnicodePropertyV1<'data> {
     /// The set of characters, represented as an inversion list
-    #[cfg_attr(feature = "serde", serde(borrow))]
-    pub inv_list: UnicodeSet<'data>,
+    InversionList(#[cfg_attr(feature = "serde", serde(borrow))] UnicodeSet<'data>),
+    // new variants should go BELOW existing ones
+    // Serde serializes based on variant name and index in the enum
+    // https://docs.rs/serde/latest/serde/trait.Serializer.html#tymethod.serialize_unit_variant
 }
 
 /// A map efficiently storing data about individual characters.
+///
+/// This data enum is extensible, more backends may be added in the future.
+/// Old data can be used with newer code but not vice versa.
 #[derive(Clone, Debug, Eq, PartialEq, yoke::Yokeable, zerofrom::ZeroFrom)]
 #[cfg_attr(
     feature = "datagen", 
-    derive(serde::Serialize, crabbake::Bakeable),
-    crabbake(path = icu_properties::provider),
+    derive(serde::Serialize, databake::Bake),
+    databake(path = icu_properties::provider),
 )]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
-pub struct UnicodePropertyMapV1<'data, T: TrieValue> {
+#[non_exhaustive]
+pub enum UnicodePropertyMapV1<'data, T: TrieValue> {
     /// A codepoint trie storing the data
-    #[cfg_attr(feature = "serde", serde(borrow))]
-    pub code_point_trie: CodePointTrie<'data, T>,
+    CodePointTrie(#[cfg_attr(feature = "serde", serde(borrow))] CodePointTrie<'data, T>),
+    // new variants should go BELOW existing ones
+    // Serde serializes based on variant name and index in the enum
+    // https://docs.rs/serde/latest/serde/trait.Serializer.html#tymethod.serialize_unit_variant
 }
 
 /// A data structure efficiently storing `Script` and `Script_Extensions` property data.
@@ -47,14 +60,71 @@ pub struct UnicodePropertyMapV1<'data, T: TrieValue> {
 #[derive(Debug, Eq, PartialEq, Clone)]
 #[cfg_attr(
     feature = "datagen", 
-    derive(serde::Serialize, crabbake::Bakeable),
-    crabbake(path = icu_properties::provider),
+    derive(serde::Serialize, databake::Bake),
+    databake(path = icu_properties::provider),
 )]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 pub struct ScriptWithExtensionsPropertyV1<'data> {
     /// A special data structure for `Script` and `Script_Extensions`.
     #[cfg_attr(feature = "serde", serde(borrow))]
     pub data: ScriptWithExtensions<'data>,
+}
+
+// See CodePointSetData for documentation of these functions
+impl<'data> UnicodePropertyV1<'data> {
+    #[inline]
+    pub(crate) fn contains(&self, ch: char) -> bool {
+        match *self {
+            Self::InversionList(ref l) => l.contains(ch),
+        }
+    }
+    #[inline]
+    pub(crate) fn contains_u32(&self, ch: u32) -> bool {
+        match *self {
+            Self::InversionList(ref l) => l.contains_u32(ch),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn from_unicode_set(l: UnicodeSet<'static>) -> Self {
+        Self::InversionList(l)
+    }
+
+    #[inline]
+    pub(crate) fn to_unicode_set(&'_ self) -> UnicodeSet<'_> {
+        match *self {
+            Self::InversionList(ref l) => ZeroFrom::zero_from(l),
+        }
+    }
+}
+
+// See CodePointMapData for documentation of these functions
+impl<'data, T: TrieValue> UnicodePropertyMapV1<'data, T> {
+    #[inline]
+    pub(crate) fn get_u32(&self, ch: u32) -> T {
+        match *self {
+            Self::CodePointTrie(ref t) => t.get(ch),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn get_set_for_value(&self, value: T) -> UnicodeSet<'static> {
+        match *self {
+            Self::CodePointTrie(ref t) => t.get_set_for_value(value),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn from_code_point_trie(trie: CodePointTrie<'static, T>) -> Self {
+        Self::CodePointTrie(trie)
+    }
+
+    #[inline]
+    pub(crate) fn to_code_point_trie(&self) -> CodePointTrie<'_, T> {
+        match *self {
+            Self::CodePointTrie(ref t) => ZeroFrom::zero_from(t),
+        }
+    }
 }
 
 macro_rules! expand {
@@ -64,6 +134,7 @@ macro_rules! expand {
     ) => {
 
             $(
+                #[doc = core::concat!("Data marker for the '", $bin_s, "' Unicode property")]
                 pub struct $bin_marker;
 
                 impl DataMarker for $bin_marker {
@@ -81,15 +152,16 @@ macro_rules! expand {
                 }
 
                 #[cfg(feature = "datagen")]
-                impl crabbake::Bakeable for $bin_marker {
-                    fn bake(&self, env: &crabbake::CrateEnv) -> crabbake::TokenStream {
+                impl databake::Bake for $bin_marker {
+                    fn bake(&self, env: &databake::CrateEnv) -> databake::TokenStream {
                         env.insert("icu_properties");
-                        crabbake::quote!{ icu_properties::provider::$bin_marker }
+                        databake::quote!{ ::icu_properties::provider::$bin_marker }
                     }
                 }
             )+
 
             $(
+                #[doc = core::concat!("Data marker for the '", $enum_s, "' Unicode property")]
                 pub struct $enum_marker;
 
                 impl DataMarker for $enum_marker {
@@ -108,10 +180,10 @@ macro_rules! expand {
                 }
 
                 #[cfg(feature = "datagen")]
-                impl crabbake::Bakeable for $enum_marker {
-                    fn bake(&self, env: &crabbake::CrateEnv) -> crabbake::TokenStream {
+                impl databake::Bake for $enum_marker {
+                    fn bake(&self, env: &databake::CrateEnv) -> databake::TokenStream {
                         env.insert("icu_properties");
-                        crabbake::quote!{ icu_properties::provider::$enum_marker }
+                        databake::quote!{ ::icu_properties::provider::$enum_marker }
                     }
                 }
             )+

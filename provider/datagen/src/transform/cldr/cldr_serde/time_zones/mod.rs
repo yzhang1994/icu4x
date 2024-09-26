@@ -7,12 +7,14 @@ pub mod meta_zones;
 pub mod time_zone_names;
 
 use icu_datetime::provider::time_zones::{MetaZoneId, TimeZoneBcp47Id};
-use litemap::LiteMap;
+use meta_zones::ZonePeriod;
+use std::collections::HashMap;
 use time_zone_names::TimeZoneNames;
 
 #[derive(Debug)]
-pub struct CldrTimeZonesData<'a> {
-    pub time_zone_names: &'a TimeZoneNames,
-    pub bcp47_tzids: &'a LiteMap<String, TimeZoneBcp47Id>,
-    pub meta_zone_ids: &'a LiteMap<String, MetaZoneId>,
+pub struct CldrTimeZonesData {
+    pub time_zone_names: TimeZoneNames,
+    pub bcp47_tzids: HashMap<String, TimeZoneBcp47Id>,
+    pub meta_zone_ids: HashMap<String, MetaZoneId>,
+    pub meta_zone_periods: HashMap<String, ZonePeriod>,
 }

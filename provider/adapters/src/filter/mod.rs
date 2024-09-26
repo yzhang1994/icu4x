@@ -21,13 +21,13 @@
 //! # Examples
 //!
 //! ```
-//! use icu_locid::language;
+//! use icu_locid::subtags_language as language;
 //! use icu_provider::hello_world::*;
 //! use icu_provider::prelude::*;
 //! use icu_provider_adapters::filter::Filterable;
 //!
 //! // Only return German data from a HelloWorldProvider:
-//! HelloWorldProvider::new_with_placeholder_data()
+//! HelloWorldProvider
 //!     .filterable("Demo German-only filter")
 //!     .filter_by_langid(|langid| langid.language == language!("de"));
 //! ```

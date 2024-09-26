@@ -27,7 +27,7 @@
 //!     .parse()
 //!     .expect("Failed to parse.");
 //!
-//! assert_eq!(loc.id.language, "en");
+//! assert_eq!(loc.id.language, "en".parse().unwrap());
 //! assert_eq!(loc.id.script, None);
 //! assert_eq!(loc.id.region, Some("US".parse().unwrap()));
 //! assert_eq!(loc.id.variants.len(), 0);
@@ -73,8 +73,7 @@ pub enum ExtensionType {
 }
 
 impl ExtensionType {
-    #[allow(missing_docs)] // TODO(#1028) - Add missing docs.
-    pub fn from_byte(key: u8) -> Result<Self, ParserError> {
+    pub(crate) fn from_byte(key: u8) -> Result<Self, ParserError> {
         let key = key.to_ascii_lowercase();
         match key {
             b'u' => Ok(Self::Unicode),
@@ -87,13 +86,18 @@ impl ExtensionType {
 }
 
 /// A map of extensions associated with a given [`Locale`](crate::Locale).
-#[derive(Debug, Default, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
-#[allow(missing_docs)] // TODO(#1028) - Add missing docs.
+#[derive(Debug, Default, PartialEq, Eq, Clone, Hash)]
 #[non_exhaustive]
 pub struct Extensions {
+    /// A representation of the data for a Unicode extension, when present in the locale identifer.
     pub unicode: Unicode,
+    /// A representation of the data for a transform extension, when present in the locale identifer.
     pub transform: Transform,
+    /// A representation of the data for a private-use extension, when present in the locale identifer.
     pub private: Private,
+    /// A sequence of any other extensions that are present in the locale identifier but are not formally
+    /// [defined](https://unicode.org/reports/tr35/) and represented explicitly as [`Unicode`], [`Transform`],
+    /// and [`Private`] are.
     pub other: Vec<Other>,
 }
 
@@ -150,13 +154,13 @@ impl Extensions {
     /// only_unicode
     ///     .extensions
     ///     .retain_by_type(|t| t == ExtensionType::Unicode);
-    /// assert_eq!(only_unicode, "und-u-world");
+    /// assert_eq!(only_unicode, "und-u-world".parse().unwrap());
     ///
     /// let mut only_t_z = loc.clone();
     /// only_t_z
     ///     .extensions
     ///     .retain_by_type(|t| t == ExtensionType::Transform || t == ExtensionType::Other(b'z'));
-    /// assert_eq!(only_t_z, "und-t-mul-z-zzz");
+    /// assert_eq!(only_t_z, "und-t-mul-z-zzz".parse().unwrap());
     /// ```
     pub fn retain_by_type<F>(&mut self, mut predicate: F)
     where

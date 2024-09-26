@@ -7,18 +7,24 @@
 use crate::error::DateTimeError;
 use core::convert::TryFrom;
 use core::convert::TryInto;
+use core::fmt;
 use core::ops::{Add, Sub};
 use core::str::FromStr;
-use tinystr::{TinyStr16, TinyStr8};
+use tinystr::{TinyStr16, TinyStr4};
+use zerovec::maps::ZeroMapKV;
+use zerovec::ule::AsULE;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[allow(clippy::exhaustive_structs)] // this is a newtype
 pub struct Era(pub TinyStr16);
 
 /// Representation of a formattable year.
-#[derive(Clone, Debug, PartialEq)]
-#[allow(clippy::exhaustive_structs)] // this type is stable
-pub struct Year {
+///
+/// More fields may be added in the future, for things like
+/// the cyclic or extended year
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct FormattableYear {
     /// The era containing the year.
     pub era: Era,
 
@@ -27,29 +33,66 @@ pub struct Year {
 
     /// The related ISO year. This is normally the ISO (proleptic Gregorian) year having the greatest
     /// overlap with the calendar year. It is used in certain date formatting patterns.
-    pub related_iso: i32,
+    ///
+    /// Can be None if the calendar does not typically use related_iso (and CLDR does not contain patterns
+    /// using it)
+    pub related_iso: Option<i32>,
 }
 
-/// TODO(#486): Implement month codes.
-#[derive(Clone, Debug, PartialEq)]
+impl FormattableYear {
+    /// Construct a new Year given an era and number
+    ///
+    /// Other fields can be set mutably after construction
+    /// as needed
+    pub fn new(era: Era, number: i32) -> Self {
+        Self {
+            era,
+            number,
+            related_iso: None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[allow(clippy::exhaustive_structs)] // this is a newtype
-pub struct MonthCode(pub TinyStr8);
+#[cfg_attr(
+    feature = "datagen",
+    derive(serde::Serialize, databake::Bake),
+    databake(path = icu_calendar::types),
+)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
+pub struct MonthCode(pub TinyStr4);
 
+impl AsULE for MonthCode {
+    type ULE = TinyStr4;
+    fn to_unaligned(self) -> TinyStr4 {
+        self.0
+    }
+    fn from_unaligned(u: TinyStr4) -> Self {
+        Self(u)
+    }
+}
+
+impl<'a> ZeroMapKV<'a> for MonthCode {
+    type Container = zerovec::ZeroVec<'a, MonthCode>;
+    type Slice = zerovec::ZeroSlice<MonthCode>;
+    type GetType = <MonthCode as AsULE>::ULE;
+    type OwnedType = MonthCode;
+}
+
+impl fmt::Display for MonthCode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 /// Representation of a formattable month.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[allow(clippy::exhaustive_structs)] // this type is stable
-pub struct Month {
-    /// A month number in a year. In normal years, this is usually the 1-based month index. In leap
-    /// years, this is what the month number would have been in a non-leap year.
+pub struct FormattableMonth {
+    /// The month number in this given year. For calendars with leap months, all months after
+    /// the leap month will end up with an incremented number.
     ///
-    /// For example:
-    ///
-    /// - January = 1
-    /// - December = 12
-    /// - Adar, Adar I, and Adar II = 6
-    ///
-    /// The `code` property is used to distinguish between unique months in leap years.
-    pub number: u32,
+    /// In general, prefer using the month code in generic code.
+    pub ordinal: u32,
 
     /// The month code, used to distinguish months during leap years.
     pub code: MonthCode,
@@ -58,7 +101,7 @@ pub struct Month {
 /// A struct containing various details about the position of the day within a year. It is returned
 // by the [`day_of_year_info()`](trait.DateInput.html#tymethod.day_of_year_info) method of the
 // [`DateInput`] trait.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[allow(clippy::exhaustive_structs)] // this type is stable
 pub struct DayOfYearInfo {
     /// The current day of the year, 1-based.
@@ -66,15 +109,16 @@ pub struct DayOfYearInfo {
     /// The number of days in a year.
     pub days_in_year: u32,
     /// The previous year.
-    pub prev_year: Year,
+    pub prev_year: FormattableYear,
     /// The number of days in the previous year.
     pub days_in_prev_year: u32,
     /// The next year.
-    pub next_year: Year,
+    pub next_year: FormattableYear,
 }
 
 /// A day number in a month. Usually 1-based.
 #[allow(clippy::exhaustive_structs)] // this is a newtype
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DayOfMonth(pub u32);
 
 /// A week number in a month. Usually 1-based.
@@ -407,8 +451,8 @@ impl FromStr for GmtOffset {
 #[repr(i8)]
 #[cfg_attr(
     feature = "datagen",
-    derive(serde::Serialize, crabbake::Bakeable),
-    crabbake(path = icu_calendar::types),
+    derive(serde::Serialize, databake::Bake),
+    databake(path = icu_calendar::types),
 )]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 #[allow(clippy::exhaustive_enums)] // This is stable

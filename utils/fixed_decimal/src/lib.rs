@@ -52,16 +52,15 @@
 
 pub mod decimal;
 mod ops;
-pub mod signum;
 mod uint_iterator;
 
 #[cfg(feature = "ryu")]
 pub use decimal::DoublePrecision;
 
 pub use decimal::FixedDecimal;
-pub use decimal::RoundingMode;
+pub use decimal::Sign;
+pub use decimal::SignDisplay;
 use displaydoc::Display;
-pub use signum::Signum;
 
 #[derive(Display, Debug, PartialEq)]
 pub enum Error {

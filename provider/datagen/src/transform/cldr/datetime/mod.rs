@@ -3,14 +3,12 @@
 // (online at: https://github.com/unicode-org/icu4x/blob/main/LICENSE ).
 
 use crate::transform::cldr::cldr_serde;
-use crate::transform::reader::{get_langid_subdirectories, get_langid_subdirectory, open_reader};
 use crate::SourceData;
-use elsa::sync::FrozenBTreeMap;
 use icu_datetime::provider::calendar::*;
-use icu_locid::{unicode_ext_key, Locale};
+use icu_locid::{extensions_unicode_key as key, extensions_unicode_value as value, Locale};
 use icu_provider::datagen::IterableResourceProvider;
 use icu_provider::prelude::*;
-use litemap::LiteMap;
+use std::collections::HashMap;
 
 mod patterns;
 mod skeletons;
@@ -22,8 +20,7 @@ pub mod week_data;
 pub struct CommonDateProvider {
     source: SourceData,
     // BCP-47 value -> CLDR identifier
-    supported_cals: LiteMap<icu_locid::extensions::unicode::Value, &'static str>,
-    data: FrozenBTreeMap<ResourceOptions, Box<cldr_serde::ca::Dates>>,
+    supported_cals: HashMap<icu_locid::extensions::unicode::Value, &'static str>,
 }
 
 impl From<&SourceData> for CommonDateProvider {
@@ -31,16 +28,15 @@ impl From<&SourceData> for CommonDateProvider {
         CommonDateProvider {
             source: source.clone(),
             supported_cals: [
-                (icu_locid::unicode_ext_value!("gregory"), "gregorian"),
-                (icu_locid::unicode_ext_value!("buddhist"), "buddhist"),
-                (icu_locid::unicode_ext_value!("japanese"), "japanese"),
-                (icu_locid::unicode_ext_value!("coptic"), "coptic"),
-                (icu_locid::unicode_ext_value!("indian"), "indian"),
-                (icu_locid::unicode_ext_value!("ethiopic"), "ethiopic"),
+                (value!("gregory"), "gregorian"),
+                (value!("buddhist"), "buddhist"),
+                (value!("japanese"), "japanese"),
+                (value!("coptic"), "coptic"),
+                (value!("indian"), "indian"),
+                (value!("ethiopic"), "ethiopic"),
             ]
             .into_iter()
             .collect(),
-            data: FrozenBTreeMap::new(),
         }
     }
 }
@@ -56,82 +52,63 @@ macro_rules! impl_resource_provider {
                     let langid = req.options.get_langid();
                     let calendar = req
                         .options
-                        .get_unicode_ext(&unicode_ext_key!("ca"))
+                        .get_unicode_ext(&key!("ca"))
                         .ok_or_else(|| DataErrorKind::NeedsVariant.into_error())?;
 
-                    let dates = if let Some(dates) = self.data.get(&req.options) {
-                        dates
-                    } else {
-                        let cldr_cal = self
-                            .supported_cals
-                            .get(&calendar)
-                            .ok_or_else(|| DataErrorKind::MissingVariant.into_error())?;
+                    let cldr_cal = self
+                        .supported_cals
+                        .get(&calendar)
+                        .ok_or_else(|| DataErrorKind::MissingVariant.into_error())?;
 
-                        let folder = get_langid_subdirectory(
-                            &self
-                                .source
-                                .get_cldr_paths()?
-                                .cldr_dates(cldr_cal)
-                                .join("main"),
-                            &langid,
-                        )?
-                        .ok_or_else(|| DataErrorKind::MissingLocale.into_error())?;
+                    let resource: &cldr_serde::ca::Resource = self
+                        .source
+                        .cldr()?
+                        .dates(cldr_cal).read_and_parse(&langid, &format!("ca-{}.json", cldr_cal))?;
 
-                        let calendar_file = folder.join(&format!("ca-{}.json", cldr_cal));
+                    let mut data =
+                        resource
+                            .main
+                            .0
+                            .get(&langid)
+                            .expect("CLDR file contains the expected language")
+                            .dates
+                            .calendars
+                            .get(*cldr_cal)
+                            .expect("CLDR file contains the expected calendar")
+                            .clone();
 
-                        let mut resource: cldr_serde::ca::Resource =
-                            serde_json::from_reader(open_reader(&calendar_file)?).map_err(|e| DataError::from(e).with_path_context(&calendar_file))?;
+                    // CLDR treats ethiopic and ethioaa as separate calendars; however we treat them as a single resource key that
+                    // supports symbols for both era patterns based on the settings on the date. Load in ethioaa data as well when dealing with
+                    // ethiopic.
+                    if calendar == value!("ethiopic") {
+                        let ethioaa: &cldr_serde::ca::Resource = self.source.cldr()?.dates("ethiopic").read_and_parse(&langid, "ca-ethiopic-amete-alem.json")?;
 
-                        let mut data =
-                                resource
-                                    .main
-                                    .0
-                                    .remove(&langid)
-                                    .expect("CLDR file contains the expected language")
-                                    .dates
-                                    .calendars
-                                    .remove(*cldr_cal)
-                                    .expect("CLDR file contains the expected calendar");
+                        let ethioaa_data = ethioaa
+                            .main
+                            .0
+                            .get(&langid)
+                            .expect("CLDR ca-ethiopic-amete-alem.json contains the expected language")
+                            .dates
+                            .calendars
+                            .get("ethiopic-amete-alem")
+                            .expect("CLDR ca-ethiopic-amete-alem.json contains the expected calendar")
+                            .clone();
 
-                        // CLDR treats ethiopic and ethioaa as separate calendars; however we treat them as a single resource key that
-                        // supports symbols for both era patterns based on the settings on the date. Load in ethioaa data as well when dealing with
-                        // ethiopic.
-                        if calendar == icu_locid::unicode_ext_value!("ethiopic") {
-                            let ethioaa_path = folder.join("ca-ethiopic-amete-alem.json");
+                        let mundi_name = ethioaa_data.eras.names.get("0").expect("ethiopic-amete-alem calendar must have 0 era");
+                        let mundi_abbr = ethioaa_data.eras.abbr.get("0").expect("ethiopic-amete-alem calendar must have 0 era");
+                        let mundi_narrow = ethioaa_data.eras.narrow.get("0").expect("ethiopic-amete-alem calendar must have 0 era");
 
-                            let mut ethioaa: cldr_serde::ca::Resource = serde_json::from_reader(open_reader(&ethioaa_path)?)
-                                .map_err(|e| DataError::from(e).with_path_context(&ethioaa_path))?;
-
-                            let ethioaa_data = ethioaa
-                                .main
-                                .0
-                                .remove(&langid)
-                                .expect("CLDR ca-ethiopic-amete-alem.json contains the expected language")
-                                                        .dates
-                                                        .calendars
-                                                        .remove("ethiopic-amete-alem")
-                                                        .expect("CLDR ca-ethiopic-amete-alem.json contains the expected calendar");
-
-                            let mundi_name = ethioaa_data.eras.names.get("0").expect("ethiopic-amete-alem calendar must have 0 era");
-                            let mundi_abbr = ethioaa_data.eras.abbr.get("0").expect("ethiopic-amete-alem calendar must have 0 era");
-                            let mundi_narrow = ethioaa_data.eras.narrow.get("0").expect("ethiopic-amete-alem calendar must have 0 era");
-
-                            data.eras.names.insert("2".to_string(), mundi_name.clone());
-                            data.eras.abbr.insert("2".to_string(), mundi_abbr.clone());
-                            data.eras.narrow.insert("2".to_string(), mundi_narrow.clone());
-                        }
-                        self.data.insert(
-                            req.options.clone(),
-                            Box::new(data)
-                        )
-                    };
+                        data.eras.names.insert("2".to_string(), mundi_name.clone());
+                        data.eras.abbr.insert("2".to_string(), mundi_abbr.clone());
+                        data.eras.narrow.insert("2".to_string(), mundi_narrow.clone());
+                    }
 
                     let metadata = DataResponseMetadata::default();
                     // TODO(#1109): Set metadata.data_langid correctly.
                     Ok(DataResponse {
                         metadata,
                         #[allow(clippy::redundant_closure_call)]
-                        payload: Some(DataPayload::from_owned(($expr)(dates, &calendar.to_string()))),
+                        payload: Some(DataPayload::from_owned(($expr)(&data, &calendar.to_string()))),
                     })
                 }
             }
@@ -140,20 +117,17 @@ macro_rules! impl_resource_provider {
                 fn supported_options(&self) -> Result<Vec<ResourceOptions>, DataError> {
                     let mut r = Vec::new();
                     for (cal_value, cldr_cal) in self.supported_cals.iter() {
-                        r.extend(get_langid_subdirectories(
-                                &self
+                        r.extend(self
                                     .source
-                                    .get_cldr_paths()?
-                                    .cldr_dates(cldr_cal)
-                                    .join("main"),
-                            )?
+                                    .cldr()?
+                                    .dates(cldr_cal).list_langs()?
                             .map(|lid| {
                                 let mut locale: Locale = lid.into();
                                 locale
                                     .extensions
                                     .unicode
                                     .keywords
-                                    .set(unicode_ext_key!("ca"), cal_value.clone());
+                                    .set(key!("ca"), cal_value.clone());
                                 ResourceOptions::from(locale)
                             }));
                     }
@@ -168,10 +142,14 @@ macro_rules! impl_resource_provider {
 
 impl_resource_provider!(
     (DateSymbolsV1Marker, symbols::convert_dates),
+    (TimeSymbolsV1Marker, |dates, _| {
+        symbols::convert_times(dates)
+    }),
     (DateSkeletonPatternsV1Marker, |dates, _| {
         DateSkeletonPatternsV1::from(dates)
     }),
-    (DatePatternsV1Marker, |dates, _| DatePatternsV1::from(dates))
+    (DatePatternsV1Marker, |dates, _| DatePatternsV1::from(dates)),
+    (TimePatternsV1Marker, |dates, _| TimePatternsV1::from(dates))
 );
 
 #[cfg(test)]
@@ -262,6 +240,8 @@ mod test {
 
     #[test]
     fn test_basic_symbols() {
+        use icu_calendar::types::MonthCode;
+        use tinystr::tinystr;
         let provider = CommonDateProvider::from(&SourceData::for_test());
 
         let locale: Locale = "cs-u-ca-gregory".parse().unwrap();
@@ -274,7 +254,16 @@ mod test {
             .take_payload()
             .unwrap();
 
-        assert_eq!("srpna", cs_dates.get().months.format.wide.0[7]);
+        assert_eq!(
+            "srpna",
+            cs_dates
+                .get()
+                .months
+                .format
+                .wide
+                .get(MonthCode(tinystr!(4, "M08")))
+                .unwrap()
+        );
 
         assert_eq!(
             "po",
